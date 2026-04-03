@@ -477,7 +477,7 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
             <a id="liSuggestUrl" href="#" target="_blank" style="font-size:11px;color:var(--g500);display:block;margin-top:4px"></a>
           </div>
           <div style="display:flex;gap:0;border-top:1px solid var(--g200)">
-            <button onclick="confirmLinkedIn()" style="flex:1;padding:9px;background:var(--g600);color:#fff;border:none;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">✓ Yes, that's them</button>
+            <button onclick="confirmLinkedIn()" style="flex:1;padding:9px;background:var(--g600);color:#fff;border:none;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">✓ Yes, that&#39;s them</button>
             <button onclick="dismissLinkedIn()" style="flex:1;padding:9px;background:#fff;color:var(--muted);border:none;border-left:1px solid var(--g200);font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">✗ Not them</button>
           </div>
         </div>
@@ -1257,26 +1257,7 @@ async function suggestLinkedIn(){
 
   showToast('Searching for LinkedIn profile…');
   try{
-    var prompt='Generate the most likely LinkedIn profile URL and details for this person:
-'+
-      'Name: '+c.name+'
-'+
-      'Company: '+(c.company||'unknown')+'
-'+
-      'Email domain: '+(c.email.split('@')[1]||'')+'
-
-'+
-      'Return ONLY a JSON object with keys:
-'+
-      '- url: the most likely linkedin.com/in/[slug] URL
-'+
-      '- displayName: their likely full name as it appears on LinkedIn
-'+
-      '- title: their likely job title
-'+
-      '- confidence: "high", "medium", or "low"
-'+
-      'Base the slug on common LinkedIn URL patterns (firstname-lastname, firstname-lastname-company etc). No other text.';
+    var prompt='Generate the most likely LinkedIn profile URL for: Name: '+c.name+', Company: '+(c.company||'unknown')+', Email: '+c.email+'. Return ONLY JSON: {url, displayName, title, confidence} where confidence is high/medium/low. No other text.';
 
     var res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
