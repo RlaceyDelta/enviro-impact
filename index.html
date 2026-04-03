@@ -1,0 +1,1627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GCRM — Green Contact Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --g900: #061a0d;
+  --g800: #0a2e16;
+  --g700: #0f4220;
+  --g600: #155c2c;
+  --g500: #1d7a3a;
+  --g400: #27a050;
+  --g300: #4dc97a;
+  --g200: #9de8bc;
+  --g100: #d6f5e3;
+  --g50:  #f0fdf5;
+  --sage: #7aab8a;
+  --earth: #3d5c42;
+  --cream: #f7faf8;
+  --white: #ffffff;
+  --ink: #0a1a0e;
+  --muted: #4a6653;
+  --border: #d0e8d8;
+  --shadow: 0 2px 12px rgba(6,26,13,0.10);
+  --shadow-lg: 0 8px 40px rgba(6,26,13,0.16);
+  --r: 12px;
+  --r-lg: 20px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background: var(--cream);
+  color: var(--ink);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── LANDING / LOGIN ─────────────────────────────────────────────────────── */
+#landing {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--g900);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Animated background mesh */
+#landing::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 50%, rgba(29,122,58,0.35) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 80% at 80% 20%, rgba(77,201,122,0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 50% at 60% 80%, rgba(15,66,32,0.5) 0%, transparent 70%);
+  animation: meshShift 12s ease-in-out infinite alternate;
+}
+@keyframes meshShift {
+  0%   { opacity: 0.8; transform: scale(1); }
+  100% { opacity: 1;   transform: scale(1.05); }
+}
+
+/* Leaf pattern overlay */
+#landing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%234dc97a' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+.landing-nav {
+  position: relative;
+  z-index: 10;
+  padding: 24px 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo {
+  font-family: 'Playfair Display', serif;
+  font-size: 28px;
+  color: var(--g300);
+  letter-spacing: -0.5px;
+}
+.logo span { color: var(--white); }
+
+.landing-hero {
+  position: relative;
+  z-index: 10;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  padding: 60px 24px;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: rgba(77,201,122,0.15);
+  border: 1px solid rgba(77,201,122,0.3);
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--g300);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 28px;
+}
+
+.hero-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(42px, 7vw, 80px);
+  color: var(--white);
+  line-height: 1.05;
+  letter-spacing: -2px;
+  margin-bottom: 20px;
+  max-width: 800px;
+}
+.hero-title em {
+  font-style: normal;
+  color: var(--g300);
+}
+
+.hero-sub {
+  font-size: clamp(16px, 2vw, 20px);
+  color: rgba(255,255,255,0.6);
+  max-width: 520px;
+  line-height: 1.6;
+  font-weight: 300;
+  margin-bottom: 48px;
+}
+
+.hero-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.btn-google {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 32px;
+  background: white;
+  color: var(--ink);
+  border: none;
+  border-radius: var(--r);
+  font-size: 16px;
+  font-weight: 600;
+  font-family: 'Outfit', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.btn-google:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+}
+.btn-google svg { width: 20px; height: 20px; }
+
+.demo-link {
+  font-size: 13px;
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  font-family: 'Outfit', sans-serif;
+}
+.demo-link:hover { color: rgba(255,255,255,0.7); }
+
+.hero-features {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  padding: 32px 48px 48px;
+  flex-wrap: wrap;
+}
+.feature-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+  font-weight: 400;
+}
+.feature-pill-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--g400);
+}
+
+/* ─── APP SHELL ───────────────────────────────────────────────────────────── */
+#app {
+  display: none;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ─── HEADER ──────────────────────────────────────────────────────────────── */
+.app-header {
+  background: var(--g900);
+  height: 60px;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06);
+}
+.header-logo {
+  font-family: 'Playfair Display', serif;
+  font-size: 22px;
+  color: var(--g300);
+  white-space: nowrap;
+}
+.header-logo span { color: white; }
+.header-spacer { flex: 1; }
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 100px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.7);
+}
+.user-avatar {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--g500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+}
+
+.hdr-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: none;
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.hdr-btn-ghost { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); }
+.hdr-btn-ghost:hover { background: rgba(255,255,255,0.14); color: white; }
+.hdr-btn-primary { background: var(--g400); color: white; }
+.hdr-btn-primary:hover { background: var(--g300); color: var(--g900); }
+
+/* ─── SEARCH PANEL ────────────────────────────────────────────────────────── */
+.search-panel {
+  background: white;
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+}
+
+.search-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.main-search {
+  flex: 1;
+  min-width: 240px;
+  position: relative;
+}
+.main-search input {
+  width: 100%;
+  padding: 11px 16px 11px 42px;
+  border: 2px solid var(--border);
+  border-radius: var(--r);
+  font-size: 14px;
+  font-family: 'Outfit', sans-serif;
+  outline: none;
+  background: var(--cream);
+  transition: all 0.2s;
+  color: var(--ink);
+}
+.main-search input:focus {
+  border-color: var(--g400);
+  background: white;
+  box-shadow: 0 0 0 4px rgba(39,160,80,0.1);
+}
+.main-search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--sage);
+  pointer-events: none;
+}
+
+.filter-chip {
+  padding: 9px 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--r);
+  font-size: 13px;
+  font-family: 'Outfit', sans-serif;
+  background: var(--cream);
+  color: var(--ink);
+  cursor: pointer;
+  outline: none;
+  font-weight: 500;
+  transition: border-color 0.2s;
+}
+.filter-chip:focus { border-color: var(--g400); }
+
+.btn-search {
+  padding: 11px 24px;
+  background: var(--g600);
+  color: white;
+  border: none;
+  border-radius: var(--r);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'Outfit', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-search:hover { background: var(--g500); }
+.btn-search:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Keyword tags row */
+.keyword-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.kw-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--sage);
+  white-space: nowrap;
+}
+.kw-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--g100);
+  color: var(--g700);
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: all 0.15s;
+}
+.kw-tag:hover { border-color: var(--g400); }
+.kw-tag.active { background: var(--g600); color: white; border-color: var(--g600); }
+.kw-tag-remove {
+  font-size: 14px;
+  opacity: 0.6;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.kw-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--sage);
+  border: 1.5px dashed var(--border);
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Outfit', sans-serif;
+  transition: all 0.15s;
+}
+.kw-add:hover { border-color: var(--g400); color: var(--g600); }
+
+/* Date range */
+.date-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.date-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--sage);
+  white-space: nowrap;
+}
+.date-input {
+  padding: 6px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: 'Outfit', sans-serif;
+  outline: none;
+  color: var(--ink);
+  background: var(--cream);
+}
+.date-input:focus { border-color: var(--g400); }
+.date-preset {
+  padding: 5px 12px;
+  background: var(--g50);
+  border: 1.5px solid var(--border);
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--earth);
+  cursor: pointer;
+  font-family: 'Outfit', sans-serif;
+  transition: all 0.15s;
+}
+.date-preset:hover { background: var(--g100); border-color: var(--g400); color: var(--g700); }
+.date-preset.active { background: var(--g600); color: white; border-color: var(--g600); }
+
+/* ─── STATS BAR ───────────────────────────────────────────────────────────── */
+.stats-bar {
+  background: var(--g50);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 24px;
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  overflow-x: auto;
+}
+.stat-item {
+  flex: 1;
+  min-width: 100px;
+  padding: 4px 20px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stat-item:first-child { padding-left: 0; }
+.stat-item:last-child { border-right: none; }
+.stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--g700);
+  line-height: 1;
+  font-family: 'Playfair Display', serif;
+}
+.stat-lbl {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--sage);
+}
+
+/* ─── RESULTS ─────────────────────────────────────────────────────────────── */
+.results-area {
+  flex: 1;
+  padding: 20px 24px 40px;
+  overflow: auto;
+}
+
+/* Toolbar row above table */
+.results-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.results-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.results-actions { display: flex; gap: 8px; }
+.action-btn {
+  padding: 6px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Outfit', sans-serif;
+  background: white;
+  color: var(--earth);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.action-btn:hover { border-color: var(--g400); color: var(--g700); background: var(--g50); }
+
+/* Contact cards */
+.contact-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.contact-card {
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px 20px;
+  display: grid;
+  grid-template-columns: 48px 1fr auto auto auto;
+  gap: 0 16px;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+.contact-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--g400);
+  transform: scaleY(0);
+  transition: transform 0.15s;
+  border-radius: 0 2px 2px 0;
+}
+.contact-card:hover {
+  border-color: var(--g300);
+  box-shadow: var(--shadow);
+  transform: translateX(2px);
+}
+.contact-card:hover::before { transform: scaleY(1); }
+.contact-card.excluded { opacity: 0.4; }
+
+.contact-avatar {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+  font-family: 'Playfair Display', serif;
+}
+
+.contact-info { min-width: 0; }
+.contact-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.contact-email {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.contact-company {
+  font-size: 12px;
+  color: var(--sage);
+  font-weight: 500;
+}
+
+.contact-score {
+  text-align: center;
+  flex-shrink: 0;
+  min-width: 60px;
+}
+.score-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--g600);
+  font-family: 'Playfair Display', serif;
+  line-height: 1;
+}
+.score-lbl {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--sage);
+  font-weight: 600;
+}
+
+.contact-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 100px;
+}
+.meta-emails {
+  font-size: 12px;
+  color: var(--muted);
+}
+.meta-date {
+  font-size: 11px;
+  color: var(--sage);
+}
+
+.cat-pill {
+  padding: 4px 12px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cat-top-client    { background: #dcfce7; color: #166534; }
+.cat-client        { background: #dbeafe; color: #1e40af; }
+.cat-prospect      { background: #ffedd5; color: #9a3412; }
+.cat-lead          { background: #fce7f3; color: #9d174d; }
+.cat-partner       { background: #ede9fe; color: #5b21b6; }
+.cat-employee      { background: #e0f2fe; color: #075985; }
+.cat-contractor    { background: #f3e8ff; color: #6b21a8; }
+.cat-first-nations { background: #fef3c7; color: #92400e; }
+.cat-government    { background: #e0e7ff; color: #3730a3; }
+.cat-consultant    { background: #f0fdf4; color: #166534; }
+.cat-exclude       { background: #f3f4f6; color: #6b7280; }
+.cat-none          { background: var(--g50); color: var(--sage); }
+
+/* Activity pulse */
+.activity-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.pulse {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pulse-hot  { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,0.2); }
+.pulse-warm { background: #f59e0b; }
+.pulse-cold { background: #d1d5db; }
+
+/* ─── EMPTY / LOADING ─────────────────────────────────────────────────────── */
+.state-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+  gap: 12px;
+}
+.state-icon { font-size: 52px; }
+.state-title { font-size: 20px; font-weight: 600; color: var(--earth); font-family: 'Playfair Display', serif; }
+.state-sub { font-size: 14px; color: var(--sage); max-width: 360px; line-height: 1.6; }
+
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--g100);
+  border-top-color: var(--g500);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── CONTACT DETAIL MODAL ────────────────────────────────────────────────── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(6,26,13,0.6);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  padding: 20px;
+}
+.modal-overlay.open { display: flex; }
+
+.modal {
+  background: white;
+  border-radius: var(--r-lg);
+  width: 580px;
+  max-width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+}
+
+.modal-header {
+  background: linear-gradient(135deg, var(--g900), var(--g700));
+  padding: 28px 28px 24px;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  position: relative;
+}
+.modal-close {
+  position: absolute;
+  top: 16px; right: 16px;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.modal-close:hover { background: rgba(255,255,255,0.2); }
+
+.modal-avatar {
+  width: 56px; height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: white;
+  font-family: 'Playfair Display', serif;
+  margin-bottom: 12px;
+}
+.modal-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 24px;
+  color: white;
+  margin-bottom: 2px;
+}
+.modal-email { font-size: 13px; color: rgba(255,255,255,0.6); }
+.modal-company { font-size: 13px; color: var(--g300); font-weight: 500; margin-top: 4px; }
+
+.modal-body { padding: 24px 28px; }
+
+.modal-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.modal-stat {
+  background: var(--g50);
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+.modal-stat-val {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--g700);
+  font-family: 'Playfair Display', serif;
+  line-height: 1;
+}
+.modal-stat-lbl {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--sage);
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.ai-box {
+  background: linear-gradient(135deg, var(--g50), #f0fdf4);
+  border: 1px solid var(--g200);
+  border-radius: var(--r);
+  padding: 16px;
+  margin-bottom: 20px;
+}
+.ai-box-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--g500);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ai-box-text {
+  font-size: 13.5px;
+  color: var(--earth);
+  line-height: 1.65;
+}
+
+.section-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--sage);
+  margin-bottom: 10px;
+}
+
+.cat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.cat-option {
+  padding: 9px 8px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  font-family: 'Outfit', sans-serif;
+  transition: all 0.15s;
+}
+.cat-option:hover { transform: translateY(-1px); }
+.cat-option.selected { border-color: var(--g500) !important; box-shadow: 0 0 0 3px rgba(29,122,58,0.15); }
+
+.notes-field {
+  width: 100%;
+  min-height: 80px;
+  padding: 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  font-size: 14px;
+  font-family: 'Outfit', sans-serif;
+  color: var(--ink);
+  resize: vertical;
+  outline: none;
+  margin-bottom: 20px;
+  background: var(--cream);
+}
+.notes-field:focus { border-color: var(--g400); background: white; }
+
+.modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 16px 28px 24px;
+  border-top: 1px solid var(--border);
+}
+.btn-cancel {
+  padding: 10px 20px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  background: white;
+  color: var(--muted);
+  font-size: 14px;
+  font-family: 'Outfit', sans-serif;
+  cursor: pointer;
+}
+.btn-save {
+  padding: 10px 24px;
+  border: none;
+  border-radius: var(--r);
+  background: var(--g600);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'Outfit', sans-serif;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-save:hover { background: var(--g700); }
+
+/* ─── KEYWORD ADD MODAL ───────────────────────────────────────────────────── */
+.mini-modal {
+  background: white;
+  border-radius: var(--r-lg);
+  padding: 28px;
+  width: 380px;
+  max-width: 95vw;
+  box-shadow: var(--shadow-lg);
+}
+.mini-modal-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px;
+  color: var(--g800);
+  margin-bottom: 16px;
+}
+.mini-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--r);
+  font-size: 14px;
+  font-family: 'Outfit', sans-serif;
+  outline: none;
+  margin-bottom: 14px;
+  color: var(--ink);
+}
+.mini-input:focus { border-color: var(--g400); }
+.mini-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ─── EXPORT MODAL ────────────────────────────────────────────────────────── */
+.export-area {
+  width: 100%;
+  height: 180px;
+  font-family: monospace;
+  font-size: 11px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  resize: none;
+  outline: none;
+  background: var(--cream);
+  margin-bottom: 16px;
+}
+
+/* ─── TOAST ───────────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 28px; right: 28px;
+  background: var(--g800);
+  color: white;
+  padding: 12px 20px;
+  border-radius: var(--r);
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 999;
+  transform: translateY(80px);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: var(--shadow-lg);
+  max-width: 320px;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+
+/* ─── RESPONSIVE ──────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .contact-card { grid-template-columns: 40px 1fr auto; }
+  .contact-meta, .contact-score { display: none; }
+  .modal-stats { grid-template-columns: repeat(2, 1fr); }
+  .hero-features { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── LANDING PAGE ────────────────────────────────────────────────────────── -->
+<div id="landing">
+  <nav class="landing-nav">
+    <div class="logo">G<span>CRM</span></div>
+  </nav>
+
+  <div class="landing-hero">
+    <div class="hero-badge">
+      <span>✦</span> Gmail Contact Intelligence
+    </div>
+    <h1 class="hero-title">
+      Your inbox knows<br>your best <em>contacts.</em>
+    </h1>
+    <p class="hero-sub">
+      GCRM scores and ranks every contact in your Gmail by the topics that matter to your business — automatically.
+    </p>
+    <div class="hero-cta">
+      <button class="btn-google" onclick="connectGoogle()">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        Connect with Google
+      </button>
+      <button class="demo-link" onclick="enterDemo()">or try with demo data →</button>
+    </div>
+  </div>
+
+  <div class="hero-features">
+    <div class="feature-pill"><div class="feature-pill-dot"></div>Keyword scoring</div>
+    <div class="feature-pill"><div class="feature-pill-dot"></div>Date range filtering</div>
+    <div class="feature-pill"><div class="feature-pill-dot"></div>Contact classification</div>
+    <div class="feature-pill"><div class="feature-pill-dot"></div>AI summaries</div>
+    <div class="feature-pill"><div class="feature-pill-dot"></div>Export to CSV</div>
+    <div class="feature-pill"><div class="feature-pill-dot"></div>Private & secure</div>
+  </div>
+</div>
+
+<!-- ── APP ─────────────────────────────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-logo">G<span>CRM</span></div>
+    <div class="header-spacer"></div>
+    <div class="user-chip">
+      <div class="user-avatar" id="userInitial">?</div>
+      <span id="userName">User</span>
+    </div>
+    <button class="hdr-btn hdr-btn-ghost" onclick="openExport()">↓ Export</button>
+    <button class="hdr-btn hdr-btn-ghost" onclick="doSignOut()">Sign out</button>
+  </header>
+
+  <!-- Search panel -->
+  <div class="search-panel">
+    <div class="search-row">
+      <div class="main-search">
+        <svg class="main-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="mainSearch" placeholder="Search name, email, company…" oninput="filterLocal()">
+      </div>
+      <select class="filter-chip" id="filterCat" onchange="filterLocal()">
+        <option value="">All Categories</option>
+        <option>Top Client</option><option>Client</option><option>Prospect</option>
+        <option>Lead</option><option>Partner</option><option>Employee</option>
+        <option>Contractor</option><option>First Nations</option>
+        <option>Government</option><option>Consultant</option><option>Exclude</option>
+      </select>
+      <select class="filter-chip" id="filterShow" onchange="filterLocal()">
+        <option value="visible">Hide Excluded</option>
+        <option value="all">Show All</option>
+        <option value="excluded">Excluded Only</option>
+      </select>
+      <button class="btn-search" id="syncBtn" onclick="runSync()">⟳ Sync Gmail</button>
+    </div>
+
+    <div class="keyword-row">
+      <span class="kw-label">Keywords:</span>
+      <div id="kwTags"></div>
+      <button class="kw-add" onclick="openAddKeyword()">+ Add</button>
+    </div>
+
+    <div class="date-row">
+      <span class="date-label">Date range:</span>
+      <input type="date" class="date-input" id="dateFrom" value="2020-01-01">
+      <span style="font-size:13px;color:var(--sage)">to</span>
+      <input type="date" class="date-input" id="dateTo">
+      <button class="date-preset" onclick="setPreset('1y')">1 Year</button>
+      <button class="date-preset" onclick="setPreset('2y')">2 Years</button>
+      <button class="date-preset" onclick="setPreset('5y')">5 Years</button>
+      <button class="date-preset active" onclick="setPreset('all')">All Time</button>
+    </div>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="stats-bar">
+    <div class="stat-item"><div class="stat-val" id="sTotal">—</div><div class="stat-lbl">Contacts</div></div>
+    <div class="stat-item"><div class="stat-val" id="sShowing">—</div><div class="stat-lbl">Showing</div></div>
+    <div class="stat-item"><div class="stat-val" id="sActive">—</div><div class="stat-lbl">Active 90d</div></div>
+    <div class="stat-item"><div class="stat-val" id="sTopScore">—</div><div class="stat-lbl">Top Score</div></div>
+    <div class="stat-item"><div class="stat-val" id="sAvgScore">—</div><div class="stat-lbl">Avg Score</div></div>
+    <div class="stat-item"><div class="stat-val" id="sLastSync">—</div><div class="stat-lbl">Last Sync</div></div>
+  </div>
+
+  <!-- Results -->
+  <div class="results-area">
+    <div class="results-toolbar">
+      <div class="results-count" id="resultsCount"></div>
+      <div class="results-actions">
+        <button class="action-btn" onclick="sortContacts('score')">Sort: Score ↓</button>
+        <button class="action-btn" onclick="sortContacts('recent')">Sort: Recent</button>
+        <button class="action-btn" onclick="sortContacts('emails')">Sort: Emails</button>
+      </div>
+    </div>
+    <div class="contact-grid" id="contactGrid"></div>
+    <div id="stateBox" class="state-box">
+      <div class="state-icon">🌿</div>
+      <div class="state-title">Connect your Gmail to begin</div>
+      <div class="state-sub">Sign in with Google and click "Sync Gmail" to score your contacts by keyword relevance.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── CONTACT DETAIL MODAL ────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="contactModal">
+  <div class="modal">
+    <div class="modal-header">
+      <button class="modal-close" onclick="closeModal('contactModal')">×</button>
+      <div class="modal-avatar" id="mAvatar"></div>
+      <div class="modal-name" id="mName"></div>
+      <div class="modal-email" id="mEmail"></div>
+      <div class="modal-company" id="mCompany"></div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-stats">
+        <div class="modal-stat"><div class="modal-stat-val" id="mScore"></div><div class="modal-stat-lbl">Keyword Score</div></div>
+        <div class="modal-stat"><div class="modal-stat-val" id="mEmails"></div><div class="modal-stat-lbl">Emails</div></div>
+        <div class="modal-stat"><div class="modal-stat-val" id="mFirst"></div><div class="modal-stat-lbl">First Contact</div></div>
+        <div class="modal-stat"><div class="modal-stat-val" id="mLast"></div><div class="modal-stat-lbl">Last Contact</div></div>
+      </div>
+      <div class="ai-box" id="mAiBox" style="display:none">
+        <div class="ai-box-label">✦ AI Summary</div>
+        <div class="ai-box-text" id="mAiText"></div>
+      </div>
+      <div class="section-label">Category</div>
+      <div class="cat-grid" id="mCatGrid"></div>
+      <div class="section-label">Notes</div>
+      <textarea class="notes-field" id="mNotes" placeholder="Add notes about this contact…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('contactModal')">Cancel</button>
+      <button class="btn-save" onclick="saveContact()">Save Contact</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ADD KEYWORD MODAL ───────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="kwModal">
+  <div class="mini-modal">
+    <div class="mini-modal-title">Add Keyword</div>
+    <input type="text" class="mini-input" id="kwInput" placeholder="e.g. remediation, proposal, BioLogix…" onkeydown="if(event.key==='Enter')confirmAddKw()">
+    <div class="mini-actions">
+      <button class="btn-cancel" onclick="closeModal('kwModal')">Cancel</button>
+      <button class="btn-save" onclick="confirmAddKw()">Add Keyword</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── EXPORT MODAL ────────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="exportModal">
+  <div class="modal" style="width:520px">
+    <div class="modal-header" style="padding:20px 24px">
+      <button class="modal-close" onclick="closeModal('exportModal')">×</button>
+      <div class="modal-name" style="font-size:18px">Export Contacts</div>
+      <div class="modal-email">Current filtered view as CSV</div>
+    </div>
+    <div class="modal-body">
+      <textarea class="export-area" id="exportArea" readonly></textarea>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn-cancel" onclick="closeModal('exportModal')">Close</button>
+        <button class="btn-save" onclick="downloadCSV()">↓ Download CSV</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONFIG ───────────────────────────────────────────────────────────────────
+// Your Apps Script Web App URL — update this after each new deployment
+var API_URL   = 'https://script.google.com/macros/s/AKfycbzYcaiPlosUF-oAP6_orVy1Dl5pyhKjGXSBs5S2J5Ba0cwgrQm_0sbnuqH7-Hlp08V3iQ/exec';
+var API_TOKEN = 'DeltaCRM2026secret';
+
+// ── CATEGORIES ───────────────────────────────────────────────────────────────
+var CATS = [
+  { name: 'Top Client',    cls: 'cat-top-client',    color: '#166534', bg: '#dcfce7' },
+  { name: 'Client',        cls: 'cat-client',        color: '#1e40af', bg: '#dbeafe' },
+  { name: 'Prospect',      cls: 'cat-prospect',      color: '#9a3412', bg: '#ffedd5' },
+  { name: 'Lead',          cls: 'cat-lead',          color: '#9d174d', bg: '#fce7f3' },
+  { name: 'Partner',       cls: 'cat-partner',       color: '#5b21b6', bg: '#ede9fe' },
+  { name: 'Employee',      cls: 'cat-employee',      color: '#075985', bg: '#e0f2fe' },
+  { name: 'Contractor',    cls: 'cat-contractor',    color: '#6b21a8', bg: '#f3e8ff' },
+  { name: 'First Nations', cls: 'cat-first-nations', color: '#92400e', bg: '#fef3c7' },
+  { name: 'Government',    cls: 'cat-government',    color: '#3730a3', bg: '#e0e7ff' },
+  { name: 'Consultant',    cls: 'cat-consultant',    color: '#166534', bg: '#f0fdf4' },
+  { name: 'Exclude',       cls: 'cat-exclude',       color: '#6b7280', bg: '#f3f4f6' },
+];
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+var allContacts     = [];
+var filtered        = [];
+var activeContact   = null;
+var selectedCat     = '';
+var sortMode        = 'score';
+var keywords        = JSON.parse(localStorage.getItem('gcrm_kw') || '["proposal","project","biologix","in situ","ex situ"]');
+var userNotes       = JSON.parse(localStorage.getItem('gcrm_notes') || '{}');
+var userCats        = JSON.parse(localStorage.getItem('gcrm_cats')  || '{}');
+var isDemo          = false;
+
+// ── GOOGLE OAUTH ─────────────────────────────────────────────────────────────
+function connectGoogle() {
+  // For deployment: redirect to Google OAuth
+  // For now — show instructions and fall through to demo
+  showToast('⚙ OAuth requires server setup — loading demo data');
+  setTimeout(enterDemo, 800);
+}
+
+function enterDemo() {
+  isDemo = true;
+  allContacts = generateDemoData();
+  showApp('Demo User', 'D');
+  renderAll();
+  showToast('✓ Demo mode — showing sample contacts');
+}
+
+function showApp(name, initial) {
+  document.getElementById('landing').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('app').style.flexDirection = 'column';
+  document.getElementById('userName').textContent = name;
+  document.getElementById('userInitial').textContent = initial;
+  document.getElementById('dateTo').value = new Date().toISOString().slice(0,10);
+  renderKeywords();
+  document.getElementById('sLastSync').textContent = new Date().toLocaleDateString();
+}
+
+function doSignOut() {
+  allContacts = [];
+  filtered    = [];
+  document.getElementById('landing').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+// ── SYNC FROM APPS SCRIPT ─────────────────────────────────────────────────────
+async function runSync() {
+  if (isDemo) {
+    showToast('Demo mode — connect Gmail to sync real contacts');
+    return;
+  }
+  var btn = document.getElementById('syncBtn');
+  btn.disabled = true;
+  btn.textContent = '⟳ Syncing…';
+  showState('loading');
+
+  try {
+    var res  = await fetch(API_URL + '?action=read&token=' + API_TOKEN);
+    var json = await res.json();
+    if (json.status !== 'ok') throw new Error(json.message);
+
+    allContacts = json.data.map(function(c) {
+      var email = (c.email || '').toLowerCase().trim();
+      if (userCats[email])  c.classification = userCats[email];
+      if (userNotes[email]) c.notes          = userNotes[email];
+      return c;
+    });
+
+    renderAll();
+    document.getElementById('sLastSync').textContent = new Date().toLocaleDateString();
+    showToast('✓ ' + allContacts.length + ' contacts loaded');
+  } catch(err) {
+    showState('error', 'Sync failed: ' + err.message);
+    showToast('⚠ ' + err.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '⟳ Sync Gmail';
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function renderAll() {
+  filterLocal();
+  updateStats();
+}
+
+function filterLocal() {
+  var q       = (document.getElementById('mainSearch').value || '').toLowerCase();
+  var catF    = document.getElementById('filterCat').value;
+  var showF   = document.getElementById('filterShow').value;
+  var now     = new Date();
+  var ninety  = new Date(now - 90*24*60*60*1000);
+  var oneYear = new Date(now - 365*24*60*60*1000);
+
+  filtered = allContacts.filter(function(c) {
+    var cat = (c.classification || c['classification'] || '').trim();
+    var isExcluded = cat === 'Exclude';
+    if (showF === 'visible'  && isExcluded)  return false;
+    if (showF === 'excluded' && !isExcluded) return false;
+    if (catF && cat !== catF) return false;
+    if (q) {
+      var hay = [c.name, c.email, c.company, c.notes].join(' ').toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    return true;
+  });
+
+  sortContacts(sortMode, true);
+}
+
+function sortContacts(mode, skipFilter) {
+  sortMode = mode;
+  if (!skipFilter) filterLocal();
+
+  filtered.sort(function(a, b) {
+    if (mode === 'score') {
+      return (parseInt(b['keyword score'] || b.keywordscore || 0)) - (parseInt(a['keyword score'] || a.keywordscore || 0));
+    }
+    if (mode === 'recent') {
+      var ad = new Date(a['last contact'] || a.lastcontact || 0);
+      var bd = new Date(b['last contact'] || b.lastcontact || 0);
+      return bd - ad;
+    }
+    if (mode === 'emails') {
+      return (parseInt(b['email count'] || b.emailcount || 0)) - (parseInt(a['email count'] || a.emailcount || 0));
+    }
+    return 0;
+  });
+
+  renderContacts();
+  updateStats();
+}
+
+var AVATAR_COLORS = ['#155c2c','#1e40af','#9a3412','#5b21b6','#075985','#92400e','#3730a3','#166534'];
+function avatarColor(email) {
+  var n = 0;
+  for (var i = 0; i < email.length; i++) n += email.charCodeAt(i);
+  return AVATAR_COLORS[n % AVATAR_COLORS.length];
+}
+function initials(name) {
+  if (!name) return '?';
+  var parts = name.trim().split(/\s+/);
+  return parts.length > 1
+    ? (parts[0][0] + parts[parts.length-1][0]).toUpperCase()
+    : name.substring(0,2).toUpperCase();
+}
+
+function renderContacts() {
+  var grid  = document.getElementById('contactGrid');
+  var state = document.getElementById('stateBox');
+
+  if (filtered.length === 0 && allContacts.length > 0) {
+    grid.innerHTML = '';
+    state.innerHTML = '<div class="state-icon">🔍</div><div class="state-title">No results</div><div class="state-sub">Try adjusting your search or filters</div>';
+    state.style.display = 'flex';
+    document.getElementById('resultsCount').textContent = '';
+    return;
+  }
+  if (allContacts.length === 0) {
+    state.style.display = 'flex';
+    grid.innerHTML = '';
+    document.getElementById('resultsCount').textContent = '';
+    return;
+  }
+
+  state.style.display = 'none';
+  document.getElementById('resultsCount').textContent = filtered.length + ' contacts';
+
+  var now     = new Date();
+  var ninety  = new Date(now - 90*24*60*60*1000);
+  var oneYear = new Date(now - 365*24*60*60*1000);
+
+  grid.innerHTML = filtered.map(function(c, i) {
+    var email = c.email || '';
+    var name  = c.name  || email || '—';
+    var co    = c.company || c.Company || '';
+    var score = parseInt(c['keyword score'] || c.keywordscore || 0);
+    var count = parseInt(c['email count']   || c.emailcount   || 0);
+    var last  = c['last contact'] || c.lastcontact || '';
+    var cat   = (c.classification || '').trim();
+    var catInfo = CATS.find(function(x){ return x.name === cat; });
+    var isExcluded = cat === 'Exclude';
+
+    var lastDate = last ? new Date(last) : null;
+    var pulseClass = !lastDate ? 'pulse-cold'
+                   : lastDate > ninety  ? 'pulse-hot'
+                   : lastDate > oneYear ? 'pulse-warm' : 'pulse-cold';
+    var actLabel = !lastDate ? '' : lastDate > ninety ? 'Active' : lastDate > oneYear ? 'Recent' : '';
+
+    var catHtml = cat
+      ? '<span class="cat-pill ' + (catInfo ? catInfo.cls : 'cat-none') + '">' + esc(cat) + '</span>'
+      : '<span class="cat-pill cat-none">—</span>';
+
+    var color = avatarColor(email);
+    var init  = initials(name);
+
+    return '<div class="contact-card' + (isExcluded ? ' excluded' : '') + '" onclick="openContact(' + i + ')">' +
+      '<div class="contact-avatar" style="background:' + color + '">' + init + '</div>' +
+      '<div class="contact-info">' +
+        '<div class="contact-name">' + esc(name) + '</div>' +
+        '<div class="contact-email">' + esc(email) + '</div>' +
+        (co ? '<div class="contact-company">' + esc(co) + '</div>' : '') +
+      '</div>' +
+      '<div class="contact-score"><div class="score-num">' + score + '</div><div class="score-lbl">score</div></div>' +
+      '<div class="contact-meta">' +
+        '<div class="meta-emails">' + count + ' emails</div>' +
+        '<div class="meta-date">' + (last ? last.slice(0,10) : '—') + '</div>' +
+        (actLabel ? '<div class="activity-indicator"><div class="pulse ' + pulseClass + '"></div>' + actLabel + '</div>' : '') +
+      '</div>' +
+      catHtml +
+      '</div>';
+  }).join('');
+}
+
+function updateStats() {
+  var now    = new Date();
+  var ninety = new Date(now - 90*24*60*60*1000);
+  var active = allContacts.filter(function(c){
+    var l = c['last contact'] || c.lastcontact;
+    return l && new Date(l) > ninety;
+  }).length;
+
+  var scores = allContacts.map(function(c){ return parseInt(c['keyword score'] || c.keywordscore || 0); });
+  var top    = scores.length ? Math.max.apply(null, scores) : 0;
+  var avg    = scores.length ? Math.round(scores.reduce(function(a,b){return a+b;},0)/scores.length) : 0;
+
+  document.getElementById('sTotal').textContent   = allContacts.length || '—';
+  document.getElementById('sShowing').textContent = filtered.length    || '—';
+  document.getElementById('sActive').textContent  = active             || '—';
+  document.getElementById('sTopScore').textContent= top                || '—';
+  document.getElementById('sAvgScore').textContent= avg                || '—';
+}
+
+// ── STATE BOX ─────────────────────────────────────────────────────────────────
+function showState(type, msg) {
+  var box = document.getElementById('stateBox');
+  document.getElementById('contactGrid').innerHTML = '';
+  if (type === 'loading') {
+    box.innerHTML = '<div class="spinner"></div><div class="state-title" style="margin-top:12px">Loading contacts…</div><div class="state-sub">Fetching from your Google Sheet</div>';
+  } else if (type === 'error') {
+    box.innerHTML = '<div class="state-icon">⚠️</div><div class="state-title">Something went wrong</div><div class="state-sub">' + esc(msg || '') + '</div>';
+  }
+  box.style.display = 'flex';
+}
+
+// ── CONTACT MODAL ─────────────────────────────────────────────────────────────
+function openContact(idx) {
+  activeContact = filtered[idx];
+  var c = activeContact;
+  var email = c.email || '';
+  var name  = c.name  || email;
+  var color = avatarColor(email);
+
+  document.getElementById('mAvatar').textContent = initials(name);
+  document.getElementById('mAvatar').style.background = color;
+  document.getElementById('mName').textContent    = name;
+  document.getElementById('mEmail').textContent   = email;
+  document.getElementById('mCompany').textContent = c.company || c.Company || '';
+  document.getElementById('mScore').textContent   = c['keyword score']  || c.keywordscore  || 0;
+  document.getElementById('mEmails').textContent  = c['email count']    || c.emailcount    || 0;
+  document.getElementById('mFirst').textContent   = (c['first contact'] || c.firstcontact || '—').slice(0,10);
+  document.getElementById('mLast').textContent    = (c['last contact']  || c.lastcontact  || '—').slice(0,10);
+  document.getElementById('mNotes').value         = c.notes || '';
+
+  var ai = c['ai summary'] || c.aisummary || '';
+  if (ai) {
+    document.getElementById('mAiText').textContent = ai;
+    document.getElementById('mAiBox').style.display = 'block';
+  } else {
+    document.getElementById('mAiBox').style.display = 'none';
+  }
+
+  selectedCat = (c.classification || '').trim();
+
+  // Build category grid
+  document.getElementById('mCatGrid').innerHTML = CATS.map(function(cat) {
+    var sel = selectedCat === cat.name;
+    return '<button class="cat-option' + (sel ? ' selected' : '') + '"' +
+      ' style="background:' + cat.bg + ';color:' + cat.color + ';border-color:' + cat.bg + '"' +
+      ' onclick="selectCat(\'' + cat.name + '\')">' + cat.name + '</button>';
+  }).join('');
+
+  openModal('contactModal');
+}
+
+function selectCat(name) {
+  selectedCat = (selectedCat === name) ? '' : name;
+  document.querySelectorAll('.cat-option').forEach(function(b) {
+    var isSel = b.textContent.trim() === selectedCat;
+    b.classList.toggle('selected', isSel);
+  });
+}
+
+async function saveContact() {
+  if (!activeContact) return;
+  var email = activeContact.email;
+  var notes = document.getElementById('mNotes').value;
+
+  userCats[email]  = selectedCat;
+  userNotes[email] = notes;
+  localStorage.setItem('gcrm_cats',  JSON.stringify(userCats));
+  localStorage.setItem('gcrm_notes', JSON.stringify(userNotes));
+
+  activeContact.classification = selectedCat;
+  activeContact.notes          = notes;
+  var master = allContacts.find(function(x){ return x.email === email; });
+  if (master) { master.classification = selectedCat; master.notes = notes; }
+
+  closeModal('contactModal');
+  filterLocal();
+  showToast('✓ Contact saved');
+
+  if (!isDemo) {
+    try {
+      await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action:'update', token:API_TOKEN, email:email, classification:selectedCat, notes:notes })
+      });
+    } catch(e) { /* saved locally */ }
+  }
+}
+
+// ── KEYWORDS ──────────────────────────────────────────────────────────────────
+function renderKeywords() {
+  document.getElementById('kwTags').innerHTML = keywords.map(function(kw, i) {
+    return '<span class="kw-tag active">' + esc(kw) +
+      '<button class="kw-tag-remove" onclick="removeKw(' + i + ',event)">×</button>' +
+      '</span>';
+  }).join('');
+}
+
+function openAddKeyword() {
+  document.getElementById('kwInput').value = '';
+  openModal('kwModal');
+  setTimeout(function(){ document.getElementById('kwInput').focus(); }, 100);
+}
+
+function confirmAddKw() {
+  var val = document.getElementById('kwInput').value.trim().toLowerCase();
+  if (val && keywords.indexOf(val) < 0) {
+    keywords.push(val);
+    localStorage.setItem('gcrm_kw', JSON.stringify(keywords));
+    renderKeywords();
+    showToast('✓ Keyword added — re-sync to apply');
+  }
+  closeModal('kwModal');
+}
+
+function removeKw(i, e) {
+  e.stopPropagation();
+  keywords.splice(i, 1);
+  localStorage.setItem('gcrm_kw', JSON.stringify(keywords));
+  renderKeywords();
+  showToast('Keyword removed — re-sync to apply');
+}
+
+// ── DATE PRESETS ──────────────────────────────────────────────────────────────
+function setPreset(p) {
+  var now   = new Date();
+  var from  = new Date();
+  document.querySelectorAll('.date-preset').forEach(function(b){ b.classList.remove('active'); });
+  event.target.classList.add('active');
+
+  if (p === '1y') from.setFullYear(now.getFullYear()-1);
+  else if (p === '2y') from.setFullYear(now.getFullYear()-2);
+  else if (p === '5y') from.setFullYear(now.getFullYear()-5);
+  else from = new Date('2000-01-01');
+
+  document.getElementById('dateFrom').value = from.toISOString().slice(0,10);
+  document.getElementById('dateTo').value   = now.toISOString().slice(0,10);
+}
+
+// ── EXPORT ────────────────────────────────────────────────────────────────────
+function openExport() {
+  var headers = ['Name','Email','Company','Keyword Score','Email Count','First Contact','Last Contact','Category','Notes'];
+  var rows = filtered.map(function(c) {
+    return [c.name, c.email, c.company||'',
+      c['keyword score']||0, c['email count']||0,
+      c['first contact']||'', c['last contact']||'',
+      c.classification||'', c.notes||''
+    ].map(function(v){ return '"'+String(v).replace(/"/g,'""')+'"'; }).join(',');
+  });
+  document.getElementById('exportArea').value = headers.join(',') + '\n' + rows.join('\n');
+  openModal('exportModal');
+}
+
+function downloadCSV() {
+  var csv  = document.getElementById('exportArea').value;
+  var blob = new Blob([csv], {type:'text/csv'});
+  var a    = document.createElement('a');
+  a.href   = URL.createObjectURL(blob);
+  a.download = 'gcrm_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+// ── MODAL HELPERS ─────────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── TOAST ──────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function(){ t.classList.remove('show'); }, 3200);
+}
+
+// ── UTILS ──────────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── DEMO DATA ─────────────────────────────────────────────────────────────────
+function generateDemoData() {
+  var names = [
+    ['James Thornton','jthornton@aecom.com','Aecom',142,28,'2019-03-12','2026-03-15','Employee','Senior Project Manager on all major remediation bids'],
+    ['Sarah Mitchell','smitchell@tetratech.com','Tetratech',98,19,'2020-01-08','2026-02-28','Top Client','Lead contact for TetraTech partnership on In Situ projects'],
+    ['Don Kowalski','don@w2f.ca','W2f',87,35,'2018-06-20','2026-03-30','Top Client','Long-standing client, multiple proposal submissions since 2018'],
+    ['Gavin Overbeeke','goverbeeke@aelenv.com','Aelenv',79,22,'2019-11-04','2026-04-01','Partner','Key environmental partner, co-authored BioLogix field trials'],
+    ['Julie Greer','jgreer@genomealberta.ca','Genomealberta',67,14,'2021-05-17','2026-01-26','Prospect','Genome Alberta funding discussions, In Situ project interest'],
+    ['Keith Fraser','fraser.keith@aecom.com','Aecom',61,16,'2022-09-01','2025-11-27','Client','AECOM Calgary — reviewed Ex Situ project proposal'],
+    ['Angela Vande','aengineer@hotmail.com','Personal',54,12,'2020-07-14','2026-03-12','Consultant','P.Eng consultant, soil remediation specialist'],
+    ['Michael Lawrenchuk','mlawrenchuk@foxlakecreenation.com','Foxlakecreenation',48,44,'2023-01-15','2026-01-15','First Nations','Fox Lake Cree Nation — environmental stewardship project'],
+    ['Keith Burak','kburak@foxlakecreenation.com','Foxlakecreenation',44,44,'2024-01-26','2026-01-28','First Nations','Fox Lake Cree Nation partnership on project assessment'],
+    ['Shawn Mehler','shawn@storyline.agency','Storyline',38,12,'2023-08-10','2025-11-26','Contractor','Marketing contractor for BioLogix product launch'],
+    ['John Payne','jpayne@cl-solutions.com','Cl-solutions',32,54,'2021-02-01','2026-03-30','Client','CL Solutions — recurring project inquiries and proposal reviews'],
+    ['Laura Chen','lchen@envirowest.ca','Envirowest',28,9,'2022-04-18','2025-09-12','Prospect','Envirowest — interested in Ex Situ technology demonstration'],
+    ['Marcus Reid','mreid@gov.ab.ca','Gov',24,7,'2020-11-22','2025-06-15','Government','Alberta Environment — regulatory compliance discussions'],
+    ['Faith Okafor','fokafor@deltaremediation.com','Delta',18,6,'2022-01-10','2026-03-28','Employee','Delta internal — project coordination'],
+    ['Tijan Koroma','tkoroma@deltaremediation.com','Delta',15,8,'2021-09-05','2026-03-25','Employee','Delta internal — field operations lead'],
+  ];
+
+  return names.map(function(r) {
+    return {
+      name: r[0], email: r[1], company: r[2],
+      'keyword score': r[3], 'email count': r[4],
+      'first contact': r[5], 'last contact': r[6],
+      classification: r[7], notes: r[8],
+      'ai summary': r[8]
+    };
+  });
+}
+
+// Init
+document.getElementById('dateTo').value = new Date().toISOString().slice(0,10);
+</script>
+</body>
+</html>
