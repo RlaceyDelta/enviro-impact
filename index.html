@@ -3,263 +3,311 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GCRM — Green Contact Intelligence</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<!-- Google API -->
-<script src="https://apis.google.com/js/api.js"></script>
-<script src="https://accounts.google.com/gsi/client"></script>
+<title>GCRM — Gmail Contact Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async></script>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+    from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+  import { getFirestore, doc, setDoc, getDoc, collection, getDocs, writeBatch, deleteDoc }
+    from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDNtbYlkc7UVhBQKD_qiJLmHbqF5wD6DiU",
+    authDomain: "gcrm-705ea.firebaseapp.com",
+    projectId: "gcrm-705ea",
+    storageBucket: "gcrm-705ea.firebasestorage.app",
+    messagingSenderId: "457195153039",
+    appId: "1:457195153039:web:58a266774d5603143572fa",
+    measurementId: "G-KJG3HJS8CL"
+  };
+
+  const app      = initializeApp(firebaseConfig);
+  const auth     = getAuth(app);
+  const db       = getFirestore(app);
+  const provider = new GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+  provider.addScope('https://www.googleapis.com/auth/contacts');
+
+  // Expose to global scope
+  window._firebase = { auth, db, provider, signInWithPopup, signOut, onAuthStateChanged,
+    doc, setDoc, getDoc, collection, getDocs, writeBatch, deleteDoc };
+</script>
 <style>
 :root {
-  --g900: #061a0d;
-  --g800: #0a2e16;
-  --g700: #0f4220;
-  --g600: #155c2c;
-  --g500: #1d7a3a;
-  --g400: #27a050;
-  --g300: #4dc97a;
-  --g200: #9de8bc;
-  --g100: #d6f5e3;
-  --g50:  #f0fdf5;
-  --sage: #7aab8a;
-  --earth: #3d5c42;
-  --cream: #f7faf8;
-  --white: #ffffff;
-  --ink: #0a1a0e;
-  --muted: #4a6653;
-  --border: #d0e8d8;
-  --shadow: 0 2px 12px rgba(6,26,13,0.10);
-  --shadow-lg: 0 8px 40px rgba(6,26,13,0.16);
-  --r: 12px;
-  --r-lg: 20px;
+  --g900:#061a0d; --g800:#0a2e16; --g700:#0f4220; --g600:#155c2c;
+  --g500:#1d7a3a; --g400:#27a050; --g300:#4dc97a; --g200:#9de8bc;
+  --g100:#d6f5e3; --g50:#f0fdf5;
+  --sage:#7aab8a; --earth:#3d5c42; --cream:#f7faf8;
+  --ink:#0a1a0e; --muted:#4a6653; --border:#d0e8d8;
+  --shadow:0 2px 12px rgba(6,26,13,.10);
+  --shadow-lg:0 8px 40px rgba(6,26,13,.18);
+  --r:12px; --r-lg:20px;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Outfit', sans-serif; background: var(--cream); color: var(--ink); min-height: 100vh; overflow-x: hidden; }
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);min-height:100vh;overflow-x:hidden;}
 
 /* ── LANDING ── */
-#landing {
-  min-height: 100vh; display: flex; flex-direction: column;
-  background: var(--g900); position: relative; overflow: hidden;
-}
-#landing::before {
-  content: ''; position: absolute; inset: 0;
-  background: radial-gradient(ellipse 80% 60% at 20% 50%, rgba(29,122,58,0.35) 0%, transparent 70%),
-              radial-gradient(ellipse 60% 80% at 80% 20%, rgba(77,201,122,0.12) 0%, transparent 60%),
-              radial-gradient(ellipse 50% 50% at 60% 80%, rgba(15,66,32,0.5) 0%, transparent 70%);
-  animation: meshShift 12s ease-in-out infinite alternate;
-}
-@keyframes meshShift { 0% { opacity:0.8; transform:scale(1); } 100% { opacity:1; transform:scale(1.05); } }
-#landing::after {
-  content: ''; position: absolute; inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%234dc97a' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/svg%3E");
-}
-.landing-nav { position:relative; z-index:10; padding:24px 48px; display:flex; align-items:center; justify-content:space-between; }
-.logo { font-family:'Playfair Display',serif; font-size:28px; color:var(--g300); letter-spacing:-0.5px; }
-.logo span { color:var(--white); }
-.landing-hero { position:relative; z-index:10; flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; text-align:center; padding:60px 24px; }
-.hero-badge { display:inline-flex; align-items:center; gap:8px; padding:6px 16px; background:rgba(77,201,122,0.15); border:1px solid rgba(77,201,122,0.3); border-radius:100px; font-size:12px; font-weight:600; color:var(--g300); letter-spacing:1px; text-transform:uppercase; margin-bottom:28px; }
-.hero-title { font-family:'Playfair Display',serif; font-size:clamp(42px,7vw,80px); color:var(--white); line-height:1.05; letter-spacing:-2px; margin-bottom:20px; max-width:800px; }
-.hero-title em { font-style:normal; color:var(--g300); }
-.hero-sub { font-size:clamp(16px,2vw,20px); color:rgba(255,255,255,0.6); max-width:520px; line-height:1.6; font-weight:300; margin-bottom:48px; }
-.btn-google { display:flex; align-items:center; gap:12px; padding:16px 32px; background:white; color:var(--ink); border:none; border-radius:var(--r); font-size:16px; font-weight:600; font-family:'Outfit',sans-serif; cursor:pointer; transition:all 0.2s; box-shadow:0 4px 20px rgba(0,0,0,0.3); }
-.btn-google:hover { transform:translateY(-2px); box-shadow:0 8px 30px rgba(0,0,0,0.4); }
-.btn-google svg { width:20px; height:20px; }
-.demo-link { font-size:13px; color:rgba(255,255,255,0.4); cursor:pointer; text-decoration:underline; background:none; border:none; font-family:'Outfit',sans-serif; margin-top:12px; }
-.demo-link:hover { color:rgba(255,255,255,0.7); }
-.hero-features { position:relative; z-index:10; display:flex; justify-content:center; gap:32px; padding:32px 48px 48px; flex-wrap:wrap; }
-.feature-pill { display:flex; align-items:center; gap:8px; font-size:13px; color:rgba(255,255,255,0.5); }
-.feature-dot { width:6px; height:6px; border-radius:50%; background:var(--g400); }
+#landing{min-height:100vh;display:flex;flex-direction:column;background:var(--g900);position:relative;overflow:hidden;}
+#landing::before{content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 80% 60% at 20% 50%,rgba(29,122,58,.35) 0%,transparent 70%),
+             radial-gradient(ellipse 60% 80% at 80% 20%,rgba(77,201,122,.12) 0%,transparent 60%),
+             radial-gradient(ellipse 50% 50% at 60% 80%,rgba(15,66,32,.5) 0%,transparent 70%);
+  animation:mesh 14s ease-in-out infinite alternate;}
+@keyframes mesh{0%{opacity:.8;transform:scale(1);}100%{opacity:1;transform:scale(1.05);}}
+#landing::after{content:'';position:absolute;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%234dc97a' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/svg%3E");}
+
+.l-nav{position:relative;z-index:10;padding:24px 48px;display:flex;align-items:center;justify-content:space-between;}
+.logo{font-family:'Playfair Display',serif;font-size:28px;color:var(--g300);letter-spacing:-.5px;}
+.logo span{color:#fff;}
+.l-hero{position:relative;z-index:10;flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:60px 24px;}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 16px;background:rgba(77,201,122,.15);border:1px solid rgba(77,201,122,.3);border-radius:100px;font-size:12px;font-weight:600;color:var(--g300);letter-spacing:1px;text-transform:uppercase;margin-bottom:28px;}
+.hero-title{font-family:'Playfair Display',serif;font-size:clamp(42px,7vw,80px);color:#fff;line-height:1.05;letter-spacing:-2px;margin-bottom:20px;max-width:800px;}
+.hero-title em{font-style:normal;color:var(--g300);}
+.hero-sub{font-size:clamp(15px,2vw,19px);color:rgba(255,255,255,.6);max-width:500px;line-height:1.65;font-weight:300;margin-bottom:40px;}
+.impact-counter{display:flex;gap:32px;margin-bottom:40px;}
+.impact-num{display:flex;flex-direction:column;align-items:center;}
+.impact-val{font-family:'Playfair Display',serif;font-size:36px;color:var(--g300);line-height:1;}
+.impact-lbl{font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.8px;margin-top:4px;}
+.btn-google{display:flex;align-items:center;gap:12px;padding:16px 32px;background:#fff;color:var(--ink);border:none;border-radius:var(--r);font-size:16px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;transition:all .2s;box-shadow:0 4px 20px rgba(0,0,0,.3);}
+.btn-google:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,.4);}
+.btn-google svg{width:20px;height:20px;}
+.demo-link{font-size:13px;color:rgba(255,255,255,.35);cursor:pointer;text-decoration:underline;background:none;border:none;font-family:'Outfit',sans-serif;margin-top:12px;}
+.demo-link:hover{color:rgba(255,255,255,.6);}
+.l-features{position:relative;z-index:10;display:flex;justify-content:center;gap:28px;padding:28px 48px 48px;flex-wrap:wrap;}
+.feat-pill{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.45);}
+.feat-dot{width:6px;height:6px;border-radius:50%;background:var(--g400);}
 
 /* ── APP ── */
-#app { display:none; flex-direction:column; min-height:100vh; }
-.app-header { background:var(--g900); height:60px; display:flex; align-items:center; padding:0 24px; gap:16px; position:sticky; top:0; z-index:100; box-shadow:0 1px 0 rgba(255,255,255,0.06); }
-.header-logo { font-family:'Playfair Display',serif; font-size:22px; color:var(--g300); white-space:nowrap; }
-.header-logo span { color:white; }
-.header-spacer { flex:1; }
-.user-chip { display:flex; align-items:center; gap:8px; padding:6px 12px; background:rgba(255,255,255,0.07); border-radius:100px; font-size:13px; color:rgba(255,255,255,0.7); }
-.user-avatar { width:24px; height:24px; border-radius:50%; background:var(--g500); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:white; }
-.hdr-btn { padding:7px 14px; border-radius:8px; border:none; font-family:'Outfit',sans-serif; font-size:13px; font-weight:500; cursor:pointer; transition:all 0.15s; }
-.hdr-btn-ghost { background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.7); }
-.hdr-btn-ghost:hover { background:rgba(255,255,255,0.14); color:white; }
-.hdr-btn-primary { background:var(--g400); color:white; }
-.hdr-btn-primary:hover { background:var(--g300); color:var(--g900); }
+#app{display:none;flex-direction:column;min-height:100vh;}
 
-/* ── SEARCH PANEL ── */
-.search-panel { background:white; border-bottom:1px solid var(--border); padding:16px 24px; }
-.search-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
-.main-search { flex:1; min-width:240px; position:relative; }
-.main-search input { width:100%; padding:11px 16px 11px 42px; border:2px solid var(--border); border-radius:var(--r); font-size:14px; font-family:'Outfit',sans-serif; outline:none; background:var(--cream); transition:all 0.2s; color:var(--ink); }
-.main-search input:focus { border-color:var(--g400); background:white; box-shadow:0 0 0 4px rgba(39,160,80,0.1); }
-.search-icon { position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--sage); pointer-events:none; }
-.filter-chip { padding:9px 14px; border:2px solid var(--border); border-radius:var(--r); font-size:13px; font-family:'Outfit',sans-serif; background:var(--cream); color:var(--ink); cursor:pointer; outline:none; font-weight:500; transition:border-color 0.2s; }
-.filter-chip:focus { border-color:var(--g400); }
-.btn-sync { padding:11px 24px; background:var(--g600); color:white; border:none; border-radius:var(--r); font-size:14px; font-weight:600; font-family:'Outfit',sans-serif; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
-.btn-sync:hover { background:var(--g500); }
-.btn-sync:disabled { opacity:0.5; cursor:not-allowed; }
+/* Header */
+.hdr{background:var(--g900);height:60px;display:flex;align-items:center;padding:0 20px;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 1px 0 rgba(255,255,255,.06);}
+.hdr-logo{font-family:'Playfair Display',serif;font-size:22px;color:var(--g300);white-space:nowrap;}
+.hdr-logo span{color:#fff;}
+.hdr-space{flex:1;}
+.learning-pill{display:flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(77,201,122,.12);border:1px solid rgba(77,201,122,.25);border-radius:100px;font-size:12px;color:var(--g300);font-weight:500;}
+.learning-dot{width:6px;height:6px;border-radius:50%;background:var(--g400);animation:blink 1.2s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+.user-chip{display:flex;align-items:center;gap:8px;padding:5px 12px;background:rgba(255,255,255,.07);border-radius:100px;font-size:13px;color:rgba(255,255,255,.7);}
+.u-avatar{width:26px;height:26px;border-radius:50%;object-fit:cover;background:var(--g500);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;overflow:hidden;}
+.u-avatar img{width:100%;height:100%;object-fit:cover;}
+.hdr-btn{padding:6px 13px;border-radius:8px;border:none;font-family:'Outfit',sans-serif;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;}
+.hdr-ghost{background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);}
+.hdr-ghost:hover{background:rgba(255,255,255,.14);color:#fff;}
+.hdr-primary{background:var(--g400);color:#fff;}
+.hdr-primary:hover{background:var(--g300);color:var(--g900);}
 
-.keyword-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
-.kw-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--sage); white-space:nowrap; }
-.kw-tag { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; background:var(--g100); color:var(--g700); border-radius:100px; font-size:12px; font-weight:600; cursor:pointer; border:1.5px solid transparent; transition:all 0.15s; }
-.kw-tag.active { background:var(--g600); color:white; }
-.kw-remove { font-size:14px; opacity:0.6; background:none; border:none; color:inherit; cursor:pointer; padding:0; line-height:1; }
-.kw-add { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; background:transparent; color:var(--sage); border:1.5px dashed var(--border); border-radius:100px; font-size:12px; font-weight:600; cursor:pointer; font-family:'Outfit',sans-serif; transition:all 0.15s; }
-.kw-add:hover { border-color:var(--g400); color:var(--g600); }
+/* Search panel */
+.srch-panel{background:#fff;border-bottom:1px solid var(--border);padding:14px 20px;}
+.srch-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;}
+.srch-wrap{flex:1;min-width:220px;position:relative;}
+.srch-wrap input{width:100%;padding:10px 14px 10px 40px;border:2px solid var(--border);border-radius:var(--r);font-size:14px;font-family:'Outfit',sans-serif;outline:none;background:var(--cream);transition:all .2s;color:var(--ink);}
+.srch-wrap input:focus{border-color:var(--g400);background:#fff;box-shadow:0 0 0 4px rgba(39,160,80,.1);}
+.srch-ico{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--sage);pointer-events:none;}
+.flt{padding:8px 12px;border:2px solid var(--border);border-radius:var(--r);font-size:13px;font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);cursor:pointer;outline:none;font-weight:500;}
+.flt:focus{border-color:var(--g400);}
 
-.date-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.date-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--sage); white-space:nowrap; }
-.date-input { padding:6px 10px; border:1.5px solid var(--border); border-radius:8px; font-size:13px; font-family:'Outfit',sans-serif; outline:none; color:var(--ink); background:var(--cream); }
-.date-input:focus { border-color:var(--g400); }
-.date-preset { padding:5px 12px; background:var(--g50); border:1.5px solid var(--border); border-radius:100px; font-size:12px; font-weight:600; color:var(--earth); cursor:pointer; font-family:'Outfit',sans-serif; transition:all 0.15s; }
-.date-preset:hover { background:var(--g100); border-color:var(--g400); }
-.date-preset.active { background:var(--g600); color:white; border-color:var(--g600); }
+.kw-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:8px;}
+.kw-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--sage);white-space:nowrap;}
+.kw-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;background:var(--g100);color:var(--g700);border-radius:100px;font-size:12px;font-weight:600;border:1.5px solid transparent;transition:all .15s;}
+.kw-tag.active{background:var(--g600);color:#fff;}
+.kw-rm{font-size:14px;opacity:.6;background:none;border:none;color:inherit;cursor:pointer;padding:0;line-height:1;}
+.kw-add{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;background:transparent;color:var(--sage);border:1.5px dashed var(--border);border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .15s;}
+.kw-add:hover{border-color:var(--g400);color:var(--g600);}
 
-/* ── STATS ── */
-.stats-bar { background:var(--g50); border-bottom:1px solid var(--border); padding:10px 24px; display:flex; gap:0; align-items:stretch; overflow-x:auto; }
-.stat-item { flex:1; min-width:90px; padding:4px 20px; border-right:1px solid var(--border); display:flex; flex-direction:column; gap:2px; }
-.stat-item:first-child { padding-left:0; }
-.stat-item:last-child { border-right:none; }
-.stat-val { font-size:22px; font-weight:700; color:var(--g700); line-height:1; font-family:'Playfair Display',serif; }
-.stat-lbl { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; color:var(--sage); }
+.date-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.date-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--sage);white-space:nowrap;}
+.date-inp{padding:5px 9px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:'Outfit',sans-serif;outline:none;color:var(--ink);background:var(--cream);}
+.date-inp:focus{border-color:var(--g400);}
+.preset{padding:4px 11px;background:var(--g50);border:1.5px solid var(--border);border-radius:100px;font-size:11px;font-weight:600;color:var(--earth);cursor:pointer;font-family:'Outfit',sans-serif;transition:all .15s;}
+.preset:hover{background:var(--g100);border-color:var(--g400);}
+.preset.active{background:var(--g600);color:#fff;border-color:var(--g600);}
 
-/* ── RESULTS ── */
-.results-area { flex:1; padding:20px 24px 40px; overflow:auto; }
-.results-toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:10px; }
-.results-count { font-size:13px; font-weight:600; color:var(--muted); }
-.results-actions { display:flex; gap:8px; }
-.action-btn { padding:6px 14px; border:1.5px solid var(--border); border-radius:8px; font-size:12px; font-weight:600; font-family:'Outfit',sans-serif; background:white; color:var(--earth); cursor:pointer; transition:all 0.15s; }
-.action-btn:hover { border-color:var(--g400); color:var(--g700); background:var(--g50); }
-.action-btn.active-sort { background:var(--g600); color:white; border-color:var(--g600); }
+/* Stats */
+.stats{background:var(--g50);border-bottom:1px solid var(--border);padding:8px 20px;display:flex;gap:0;overflow-x:auto;}
+.st{flex:1;min-width:80px;padding:4px 16px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:1px;}
+.st:first-child{padding-left:0;}
+.st:last-child{border-right:none;}
+.st-v{font-size:20px;font-weight:700;color:var(--g700);line-height:1;font-family:'Playfair Display',serif;}
+.st-l{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--sage);}
 
-.contact-grid { display:flex; flex-direction:column; gap:8px; }
-.contact-card { background:white; border:1.5px solid var(--border); border-radius:var(--r); padding:16px 20px; display:grid; grid-template-columns:48px 1fr auto auto auto; gap:0 16px; align-items:center; cursor:pointer; transition:all 0.15s; position:relative; overflow:hidden; }
-.contact-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--g400); transform:scaleY(0); transition:transform 0.15s; }
-.contact-card:hover { border-color:var(--g300); box-shadow:var(--shadow); transform:translateX(2px); }
-.contact-card:hover::before { transform:scaleY(1); }
-.contact-card.excluded { opacity:0.4; }
-.contact-avatar { width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; color:white; flex-shrink:0; font-family:'Playfair Display',serif; }
-.contact-info { min-width:0; }
-.contact-name { font-size:15px; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.contact-email { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.contact-company { font-size:12px; color:var(--sage); font-weight:500; }
-.contact-score { text-align:center; flex-shrink:0; min-width:60px; }
-.score-num { font-size:22px; font-weight:700; color:var(--g600); font-family:'Playfair Display',serif; line-height:1; }
-.score-lbl { font-size:9px; text-transform:uppercase; letter-spacing:0.8px; color:var(--sage); font-weight:600; }
-.contact-meta { display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0; min-width:100px; }
-.meta-emails { font-size:12px; color:var(--muted); }
-.meta-date { font-size:11px; color:var(--sage); }
-.cat-pill { padding:4px 12px; border-radius:100px; font-size:11px; font-weight:700; white-space:nowrap; flex-shrink:0; }
-.cat-top-client { background:#dcfce7; color:#166534; }
-.cat-client { background:#dbeafe; color:#1e40af; }
-.cat-prospect { background:#ffedd5; color:#9a3412; }
-.cat-lead { background:#fce7f3; color:#9d174d; }
-.cat-partner { background:#ede9fe; color:#5b21b6; }
-.cat-employee { background:#e0f2fe; color:#075985; }
-.cat-contractor { background:#f3e8ff; color:#6b21a8; }
-.cat-first-nations { background:#fef3c7; color:#92400e; }
-.cat-government { background:#e0e7ff; color:#3730a3; }
-.cat-consultant { background:#f0fdf4; color:#166534; }
-.cat-exclude { background:#f3f4f6; color:#6b7280; }
-.cat-none { background:var(--g50); color:var(--sage); }
-.pulse { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-.pulse-hot { background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,0.2); }
-.pulse-warm { background:#f59e0b; }
-.pulse-cold { background:#d1d5db; }
-.activity-indicator { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:600; }
+/* Results */
+.results{flex:1;padding:16px 20px 40px;overflow:auto;}
+.res-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
+.res-count{font-size:13px;font-weight:600;color:var(--muted);}
+.res-actions{display:flex;gap:6px;}
+.sort-btn{padding:5px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;background:#fff;color:var(--earth);cursor:pointer;transition:all .15s;}
+.sort-btn:hover{border-color:var(--g400);color:var(--g700);}
+.sort-btn.active{background:var(--g600);color:#fff;border-color:var(--g600);}
 
-/* ── STATE ── */
-.state-box { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:80px 20px; text-align:center; gap:12px; }
-.state-icon { font-size:52px; }
-.state-title { font-size:20px; font-weight:600; color:var(--earth); font-family:'Playfair Display',serif; }
-.state-sub { font-size:14px; color:var(--sage); max-width:360px; line-height:1.6; }
-.spinner { width:36px; height:36px; border:3px solid var(--g100); border-top-color:var(--g500); border-radius:50%; animation:spin 0.8s linear infinite; }
-@keyframes spin { to { transform:rotate(360deg); } }
+.c-grid{display:flex;flex-direction:column;gap:7px;}
+.c-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--r);padding:14px 18px;display:grid;grid-template-columns:46px 1fr auto auto auto;gap:0 14px;align-items:center;cursor:pointer;transition:all .15s;position:relative;overflow:hidden;}
+.c-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--g400);transform:scaleY(0);transition:transform .15s;}
+.c-card:hover{border-color:var(--g300);box-shadow:var(--shadow);transform:translateX(2px);}
+.c-card:hover::before{transform:scaleY(1);}
+.c-card.excluded{opacity:.35;}
+.c-card.new-found{border-color:var(--g300);background:var(--g50);}
 
-/* ── MODALS ── */
-.modal-overlay { display:none; position:fixed; inset:0; background:rgba(6,26,13,0.6); z-index:200; align-items:center; justify-content:center; backdrop-filter:blur(4px); padding:20px; }
-.modal-overlay.open { display:flex; }
-.modal { background:white; border-radius:var(--r-lg); width:600px; max-width:100%; max-height:90vh; overflow-y:auto; box-shadow:var(--shadow-lg); position:relative; }
-.modal-header { background:linear-gradient(135deg, var(--g900), var(--g700)); padding:28px 28px 24px; border-radius:var(--r-lg) var(--r-lg) 0 0; position:relative; }
-.modal-close { position:absolute; top:16px; right:16px; width:32px; height:32px; border-radius:50%; background:rgba(255,255,255,0.1); border:none; color:white; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
-.modal-close:hover { background:rgba(255,255,255,0.2); }
-.modal-avatar { width:56px; height:56px; border-radius:16px; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:700; color:white; font-family:'Playfair Display',serif; margin-bottom:12px; }
-.modal-name { font-family:'Playfair Display',serif; font-size:24px; color:white; margin-bottom:2px; }
-.modal-email { font-size:13px; color:rgba(255,255,255,0.6); }
-.modal-company { font-size:13px; color:var(--g300); font-weight:500; margin-top:4px; }
-.modal-body { padding:24px 28px; }
-.modal-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px; }
-.modal-stat { background:var(--g50); border-radius:10px; padding:12px; text-align:center; }
-.modal-stat-val { font-size:20px; font-weight:700; color:var(--g700); font-family:'Playfair Display',serif; line-height:1; }
-.modal-stat-lbl { font-size:9px; text-transform:uppercase; letter-spacing:0.7px; color:var(--sage); font-weight:600; margin-top:4px; }
+.c-avatar{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;flex-shrink:0;font-family:'Playfair Display',serif;overflow:hidden;}
+.c-avatar img{width:100%;height:100%;object-fit:cover;}
+.c-info{min-width:0;}
+.c-name{font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.c-email{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.c-co{font-size:11px;color:var(--sage);font-weight:500;}
+.c-score{text-align:center;flex-shrink:0;min-width:55px;}
+.sc-n{font-size:20px;font-weight:700;color:var(--g600);font-family:'Playfair Display',serif;line-height:1;}
+.sc-l{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--sage);font-weight:600;}
+.c-meta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;min-width:90px;}
+.c-emails{font-size:11px;color:var(--muted);}
+.c-date{font-size:10px;color:var(--sage);}
+.cat-pill{padding:3px 10px;border-radius:100px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0;}
+.p-tc{background:#dcfce7;color:#166534;} .p-cl{background:#dbeafe;color:#1e40af;}
+.p-pr{background:#ffedd5;color:#9a3412;} .p-ld{background:#fce7f3;color:#9d174d;}
+.p-pa{background:#ede9fe;color:#5b21b6;} .p-em{background:#e0f2fe;color:#075985;}
+.p-co{background:#f3e8ff;color:#6b21a8;} .p-fn{background:#fef3c7;color:#92400e;}
+.p-gv{background:#e0e7ff;color:#3730a3;} .p-cn{background:#f0fdf4;color:#166534;}
+.p-ex{background:#f3f4f6;color:#6b7280;} .p-none{background:var(--g50);color:var(--sage);}
+.pulse{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.ph{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.2);}
+.pw{background:#f59e0b;} .pc{background:#d1d5db;}
+.act-ind{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600;}
 
-/* Tabs inside modal */
-.modal-tabs { display:flex; border-bottom:2px solid var(--border); margin-bottom:20px; }
-.modal-tab { padding:10px 18px; border:none; background:none; font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; color:var(--sage); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px; transition:all 0.15s; }
-.modal-tab.active { color:var(--g700); border-bottom-color:var(--g500); }
+/* Gmail found section */
+.gmail-found{margin-top:20px;}
+.gmail-found-hdr{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--g600);margin-bottom:10px;padding:8px 12px;background:var(--g50);border-radius:8px;border-left:3px solid var(--g400);}
+.add-btn{padding:3px 10px;background:var(--g600);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;white-space:nowrap;}
 
-.ai-box { background:linear-gradient(135deg,var(--g50),#f0fdf4); border:1px solid var(--g200); border-radius:var(--r); padding:16px; margin-bottom:16px; }
-.ai-box-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--g500); margin-bottom:6px; }
-.ai-box-text { font-size:13.5px; color:var(--earth); line-height:1.65; }
+/* State */
+.state-box{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:70px 20px;text-align:center;gap:10px;}
+.state-ico{font-size:48px;}
+.state-ttl{font-size:19px;font-weight:600;color:var(--earth);font-family:'Playfair Display',serif;}
+.state-sub{font-size:13px;color:var(--sage);max-width:340px;line-height:1.6;}
+.spinner{width:32px;height:32px;border:3px solid var(--g100);border-top-color:var(--g500);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
 
-.section-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--sage); margin-bottom:10px; }
-.cat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:20px; }
-.cat-option { padding:9px 8px; border-radius:8px; border:2px solid transparent; font-size:12px; font-weight:700; cursor:pointer; text-align:center; font-family:'Outfit',sans-serif; transition:all 0.15s; }
-.cat-option:hover { transform:translateY(-1px); }
-.cat-option.selected { border-color:var(--g500) !important; box-shadow:0 0 0 3px rgba(29,122,58,0.15); }
-.notes-field { width:100%; min-height:80px; padding:12px; border:1.5px solid var(--border); border-radius:var(--r); font-size:14px; font-family:'Outfit',sans-serif; color:var(--ink); resize:vertical; outline:none; margin-bottom:16px; background:var(--cream); }
-.notes-field:focus { border-color:var(--g400); background:white; }
+/* Modal */
+.mo{display:none;position:fixed;inset:0;background:rgba(6,26,13,.6);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px);padding:16px;}
+.mo.open{display:flex;}
+.mo-box{background:#fff;border-radius:var(--r-lg);width:600px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:var(--shadow-lg);position:relative;}
+.mo-hdr{background:linear-gradient(135deg,var(--g900),var(--g700));padding:24px 24px 20px;border-radius:var(--r-lg) var(--r-lg) 0 0;position:relative;}
+.mo-x{position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.1);border:none;color:#fff;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.mo-x:hover{background:rgba(255,255,255,.2);}
+.mo-av{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;font-family:'Playfair Display',serif;margin-bottom:10px;overflow:hidden;}
+.mo-av img{width:100%;height:100%;object-fit:cover;}
+.mo-name{font-family:'Playfair Display',serif;font-size:22px;color:#fff;margin-bottom:2px;}
+.mo-email{font-size:12px;color:rgba(255,255,255,.6);}
+.mo-co{font-size:12px;color:var(--g300);font-weight:500;margin-top:3px;}
+.mo-li{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:11px;color:rgba(255,255,255,.5);text-decoration:none;cursor:pointer;}
+.mo-li:hover{color:var(--g300);}
+.mo-body{padding:20px 24px;}
+.mo-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px;}
+.mo-st{background:var(--g50);border-radius:9px;padding:10px;text-align:center;}
+.mo-st-v{font-size:18px;font-weight:700;color:var(--g700);font-family:'Playfair Display',serif;line-height:1;}
+.mo-st-l{font-size:9px;text-transform:uppercase;letter-spacing:.7px;color:var(--sage);font-weight:600;margin-top:3px;}
 
-/* Reconnect tab */
-.reconnect-options { display:flex; flex-direction:column; gap:12px; margin-bottom:16px; }
-.reconnect-card { border:1.5px solid var(--border); border-radius:var(--r); padding:14px; position:relative; transition:border-color 0.15s; }
-.reconnect-card:hover { border-color:var(--g300); }
-.reconnect-card-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--g500); margin-bottom:6px; display:flex; align-items:center; justify-content:space-between; }
-.reconnect-card-text { font-size:13.5px; color:var(--ink); line-height:1.6; white-space:pre-wrap; }
-.reconnect-card-actions { display:flex; gap:8px; margin-top:10px; }
-.btn-copy { padding:6px 14px; background:var(--g100); color:var(--g700); border:none; border-radius:8px; font-size:12px; font-weight:600; font-family:'Outfit',sans-serif; cursor:pointer; transition:all 0.15s; }
-.btn-copy:hover { background:var(--g200); }
-.btn-gmail { padding:6px 14px; background:var(--g600); color:white; border:none; border-radius:8px; font-size:12px; font-weight:600; font-family:'Outfit',sans-serif; cursor:pointer; transition:all 0.15s; }
-.btn-gmail:hover { background:var(--g700); }
+/* Modal tabs */
+.mo-tabs{display:flex;border-bottom:2px solid var(--border);margin-bottom:18px;}
+.mo-tab{padding:9px 16px;border:none;background:none;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--sage);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;}
+.mo-tab.active{color:var(--g700);border-bottom-color:var(--g500);}
 
-.generating-box { text-align:center; padding:40px 20px; }
-.generating-spinner { width:32px; height:32px; border:3px solid var(--g100); border-top-color:var(--g500); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto 12px; }
+.sec-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--sage);margin-bottom:8px;}
+.ai-box{background:linear-gradient(135deg,var(--g50),#f0fdf4);border:1px solid var(--g200);border-radius:var(--r);padding:14px;margin-bottom:14px;}
+.ai-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--g500);margin-bottom:5px;}
+.ai-txt{font-size:13px;color:var(--earth);line-height:1.65;}
+
+/* Cat grid */
+.cat-grid-wrap{margin-bottom:18px;}
+.cat-grid-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.cat-edit-btn{font-size:11px;color:var(--sage);background:none;border:none;cursor:pointer;font-family:'Outfit',sans-serif;font-weight:600;}
+.cat-edit-btn:hover{color:var(--g600);}
+.cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+.cat-opt{padding:8px 6px;border-radius:8px;border:2px solid transparent;font-size:11px;font-weight:700;cursor:pointer;text-align:center;font-family:'Outfit',sans-serif;transition:all .15s;}
+.cat-opt:hover{transform:translateY(-1px);}
+.cat-opt.selected{border-color:var(--g500)!important;box-shadow:0 0 0 3px rgba(29,122,58,.15);}
+
+.notes-fld{width:100%;min-height:70px;padding:10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:'Outfit',sans-serif;color:var(--ink);resize:vertical;outline:none;margin-bottom:14px;background:var(--cream);}
+.notes-fld:focus{border-color:var(--g400);background:#fff;}
+
+/* Reconnect */
+.rc-options{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;}
+.rc-card{border:1.5px solid var(--border);border-radius:var(--r);padding:12px;}
+.rc-card:hover{border-color:var(--g300);}
+.rc-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--g500);margin-bottom:5px;}
+.rc-txt{font-size:13px;color:var(--ink);line-height:1.6;white-space:pre-wrap;}
+.rc-actions{display:flex;gap:7px;margin-top:8px;}
+.btn-copy{padding:5px 12px;background:var(--g100);color:var(--g700);border:none;border-radius:7px;font-size:11px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;}
+.btn-copy:hover{background:var(--g200);}
+.btn-gmail{padding:5px 12px;background:var(--g600);color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;}
+.btn-gmail:hover{background:var(--g700);}
+.gen-box{text-align:center;padding:36px 20px;}
 
 /* Templates */
-.template-list { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
-.template-item { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--g50); border-radius:var(--r); border:1.5px solid var(--border); cursor:pointer; transition:all 0.15s; }
-.template-item:hover { border-color:var(--g300); background:var(--g100); }
-.template-item-name { font-size:13px; font-weight:600; color:var(--ink); flex:1; }
-.template-item-preview { font-size:11px; color:var(--sage); flex:2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.template-delete { background:none; border:none; color:var(--sage); cursor:pointer; font-size:16px; padding:0 4px; }
-.template-delete:hover { color:#c0392b; }
-.btn-new-template { width:100%; padding:10px; background:transparent; border:1.5px dashed var(--border); border-radius:var(--r); font-size:13px; font-weight:600; color:var(--sage); cursor:pointer; font-family:'Outfit',sans-serif; transition:all 0.15s; margin-bottom:16px; }
-.btn-new-template:hover { border-color:var(--g400); color:var(--g600); }
-.template-editor { background:var(--g50); border-radius:var(--r); padding:16px; margin-bottom:16px; border:1.5px solid var(--border); }
-.template-name-input { width:100%; padding:8px 12px; border:1.5px solid var(--border); border-radius:8px; font-size:13px; font-family:'Outfit',sans-serif; outline:none; margin-bottom:10px; color:var(--ink); }
-.template-name-input:focus { border-color:var(--g400); }
-.template-body-input { width:100%; min-height:100px; padding:10px 12px; border:1.5px solid var(--border); border-radius:8px; font-size:13px; font-family:'Outfit',sans-serif; outline:none; resize:vertical; color:var(--ink); }
-.template-body-input:focus { border-color:var(--g400); }
-.template-hint { font-size:11px; color:var(--sage); margin-top:6px; }
+.tpl-list{display:flex;flex-direction:column;gap:7px;margin-bottom:10px;}
+.tpl-item{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--g50);border-radius:var(--r);border:1.5px solid var(--border);cursor:pointer;transition:all .15s;}
+.tpl-item:hover{border-color:var(--g300);}
+.tpl-name{font-size:13px;font-weight:600;color:var(--ink);flex:1;}
+.tpl-prev{font-size:11px;color:var(--sage);flex:2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.tpl-del{background:none;border:none;color:var(--sage);cursor:pointer;font-size:15px;padding:0 3px;}
+.tpl-del:hover{color:#c0392b;}
+.btn-new-tpl{width:100%;padding:9px;background:transparent;border:1.5px dashed var(--border);border-radius:var(--r);font-size:12px;font-weight:600;color:var(--sage);cursor:pointer;font-family:'Outfit',sans-serif;transition:all .15s;margin-bottom:14px;}
+.btn-new-tpl:hover{border-color:var(--g400);color:var(--g600);}
+.tpl-ed{background:var(--g50);border-radius:var(--r);padding:14px;margin-bottom:14px;border:1.5px solid var(--border);}
+.tpl-ni{width:100%;padding:8px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Outfit',sans-serif;outline:none;margin-bottom:8px;color:var(--ink);}
+.tpl-ni:focus{border-color:var(--g400);}
+.tpl-bi{width:100%;min-height:90px;padding:8px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Outfit',sans-serif;outline:none;resize:vertical;color:var(--ink);}
+.tpl-bi:focus{border-color:var(--g400);}
+.tpl-hint{font-size:10px;color:var(--sage);margin-top:5px;}
 
-.modal-footer { display:flex; gap:10px; justify-content:flex-end; padding:16px 28px 24px; border-top:1px solid var(--border); }
-.btn-cancel { padding:10px 20px; border:1.5px solid var(--border); border-radius:var(--r); background:white; color:var(--muted); font-size:14px; font-family:'Outfit',sans-serif; cursor:pointer; }
-.btn-save { padding:10px 24px; border:none; border-radius:var(--r); background:var(--g600); color:white; font-size:14px; font-weight:600; font-family:'Outfit',sans-serif; cursor:pointer; transition:background 0.15s; }
-.btn-save:hover { background:var(--g700); }
+/* Settings modal */
+.settings-section{margin-bottom:24px;}
+.settings-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--g700);margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--g100);}
+.sig-area{width:100%;min-height:120px;padding:12px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:monospace;outline:none;resize:vertical;color:var(--ink);background:var(--cream);}
+.sig-area:focus{border-color:var(--g400);}
+.sig-hint{font-size:11px;color:var(--sage);margin-top:6px;}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--g50);}
+.toggle-label{font-size:14px;color:var(--ink);}
+.toggle-sub{font-size:11px;color:var(--sage);margin-top:2px;}
+.toggle{position:relative;width:40px;height:22px;flex-shrink:0;}
+.toggle input{opacity:0;width:0;height:0;}
+.toggle-slider{position:absolute;inset:0;background:var(--border);border-radius:100px;cursor:pointer;transition:.3s;}
+.toggle-slider::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.3s;}
+.toggle input:checked + .toggle-slider{background:var(--g500);}
+.toggle input:checked + .toggle-slider::before{transform:translateX(18px);}
 
-/* mini modal */
-.mini-modal { background:white; border-radius:var(--r-lg); padding:28px; width:400px; max-width:95vw; box-shadow:var(--shadow-lg); }
-.mini-modal-title { font-family:'Playfair Display',serif; font-size:20px; color:var(--g800); margin-bottom:16px; }
-.mini-input { width:100%; padding:11px 14px; border:2px solid var(--border); border-radius:var(--r); font-size:14px; font-family:'Outfit',sans-serif; outline:none; margin-bottom:14px; color:var(--ink); }
-.mini-input:focus { border-color:var(--g400); }
-.mini-actions { display:flex; gap:10px; justify-content:flex-end; }
+/* Cat editor */
+.cat-editor-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;}
+.cat-ed-item{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--g50);border-radius:8px;}
+.cat-ed-color{width:20px;height:20px;border-radius:50%;border:2px solid rgba(0,0,0,.1);cursor:pointer;flex-shrink:0;}
+.cat-ed-name{flex:1;font-size:13px;font-weight:600;color:var(--ink);border:none;background:transparent;outline:none;font-family:'Outfit',sans-serif;}
+.cat-ed-del{background:none;border:none;color:var(--sage);cursor:pointer;font-size:15px;}
+.cat-ed-del:hover{color:#c0392b;}
+.btn-add-cat{width:100%;padding:8px;background:transparent;border:1.5px dashed var(--border);border-radius:8px;font-size:12px;font-weight:600;color:var(--sage);cursor:pointer;font-family:'Outfit',sans-serif;}
+.btn-add-cat:hover{border-color:var(--g400);color:var(--g600);}
 
-.export-area { width:100%; height:180px; font-family:monospace; font-size:11px; padding:12px; border:1px solid var(--border); border-radius:var(--r); resize:none; outline:none; background:var(--cream); margin-bottom:16px; }
+.mo-footer{display:flex;gap:8px;justify-content:flex-end;padding:14px 24px 20px;border-top:1px solid var(--border);}
+.btn-cancel{padding:9px 18px;border:1.5px solid var(--border);border-radius:var(--r);background:#fff;color:var(--muted);font-size:13px;font-family:'Outfit',sans-serif;cursor:pointer;}
+.btn-save{padding:9px 22px;border:none;border-radius:var(--r);background:var(--g600);color:#fff;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;transition:background .15s;}
+.btn-save:hover{background:var(--g700);}
 
-.toast { position:fixed; bottom:28px; right:28px; background:var(--g800); color:white; padding:12px 20px; border-radius:var(--r); font-size:14px; font-weight:500; z-index:999; transform:translateY(80px); opacity:0; transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1); box-shadow:var(--shadow-lg); max-width:320px; }
-.toast.show { transform:translateY(0); opacity:1; }
+/* Mini modal */
+.mini-mo{background:#fff;border-radius:var(--r-lg);padding:24px;width:380px;max-width:95vw;box-shadow:var(--shadow-lg);}
+.mini-ttl{font-family:'Playfair Display',serif;font-size:19px;color:var(--g800);margin-bottom:14px;}
+.mini-inp{width:100%;padding:10px 13px;border:2px solid var(--border);border-radius:var(--r);font-size:14px;font-family:'Outfit',sans-serif;outline:none;margin-bottom:12px;color:var(--ink);}
+.mini-inp:focus{border-color:var(--g400);}
+.mini-actions{display:flex;gap:8px;justify-content:flex-end;}
 
-@media (max-width:640px) {
-  .contact-card { grid-template-columns:40px 1fr auto; }
-  .contact-meta, .contact-score { display:none; }
-  .modal-stats { grid-template-columns:repeat(2,1fr); }
+.export-area{width:100%;height:170px;font-family:monospace;font-size:11px;padding:11px;border:1px solid var(--border);border-radius:var(--r);resize:none;outline:none;background:var(--cream);margin-bottom:14px;}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--g800);color:#fff;padding:11px 18px;border-radius:var(--r);font-size:13px;font-weight:500;z-index:999;transform:translateY(80px);opacity:0;transition:all .3s cubic-bezier(.34,1.56,.64,1);box-shadow:var(--shadow-lg);max-width:300px;}
+.toast.show{transform:translateY(0);opacity:1;}
+
+@media(max-width:600px){
+  .c-card{grid-template-columns:40px 1fr auto;}
+  .c-meta,.c-score{display:none;}
+  .mo-stats{grid-template-columns:repeat(2,1fr);}
+  .l-nav{padding:20px 24px;}
 }
 </style>
 </head>
@@ -267,202 +315,293 @@ body { font-family: 'Outfit', sans-serif; background: var(--cream); color: var(-
 
 <!-- LANDING -->
 <div id="landing">
-  <nav class="landing-nav">
+  <nav class="l-nav">
     <div class="logo">G<span>CRM</span></div>
   </nav>
-  <div class="landing-hero">
-    <div class="hero-badge"><span>✦</span> Gmail Contact Intelligence</div>
+  <div class="l-hero">
+    <div class="hero-badge">✦ Gmail Contact Intelligence</div>
     <h1 class="hero-title">Your inbox knows<br>your best <em>contacts.</em></h1>
-    <p class="hero-sub">GCRM scores and ranks every contact in your Gmail by the topics that matter to your business — automatically.</p>
-    <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
-      <button class="btn-google" onclick="signInWithGoogle()">
+    <p class="hero-sub">GCRM scores and ranks every contact in your Gmail by the topics that matter — automatically, in the background, while you work.</p>
+    <div class="impact-counter">
+      <div class="impact-num"><div class="impact-val" id="impactUsers">0</div><div class="impact-lbl">Users</div></div>
+      <div class="impact-num"><div class="impact-val" id="impactCleanups">0</div><div class="impact-lbl">Cleanups</div></div>
+      <div class="impact-num"><div class="impact-val" id="impactContacts">0</div><div class="impact-lbl">Contacts Scored</div></div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+      <button class="btn-google" onclick="signIn()">
         <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
         Connect with Google
       </button>
       <button class="demo-link" onclick="enterDemo()">or try with demo data →</button>
     </div>
   </div>
-  <div class="hero-features">
-    <div class="feature-pill"><div class="feature-dot"></div>Keyword scoring</div>
-    <div class="feature-pill"><div class="feature-dot"></div>Live Gmail search</div>
-    <div class="feature-pill"><div class="feature-dot"></div>AI reconnect messages</div>
-    <div class="feature-pill"><div class="feature-dot"></div>Contact classification</div>
-    <div class="feature-pill"><div class="feature-dot"></div>Custom templates</div>
-    <div class="feature-pill"><div class="feature-dot"></div>Export to CSV</div>
+  <div class="l-features">
+    <div class="feat-pill"><div class="feat-dot"></div>Background inbox learning</div>
+    <div class="feat-pill"><div class="feat-dot"></div>Keyword contact scoring</div>
+    <div class="feat-pill"><div class="feat-dot"></div>AI reconnect messages</div>
+    <div class="feat-pill"><div class="feat-dot"></div>Google Contacts sync</div>
+    <div class="feat-pill"><div class="feat-dot"></div>Custom categories</div>
+    <div class="feat-pill"><div class="feat-dot"></div>1 cleanup per signup</div>
   </div>
 </div>
 
 <!-- APP -->
 <div id="app">
-  <header class="app-header">
-    <div class="header-logo">G<span>CRM</span></div>
-    <div class="header-spacer"></div>
-    <div class="user-chip">
-      <div class="user-avatar" id="userInitial">?</div>
-      <span id="userName">User</span>
+  <header class="hdr">
+    <div class="hdr-logo">G<span>CRM</span></div>
+    <div id="learningPill" class="learning-pill" style="display:none">
+      <div class="learning-dot"></div>
+      <span id="learningTxt">Learning inbox…</span>
     </div>
-    <button class="hdr-btn hdr-btn-ghost" onclick="openExport()">↓ Export</button>
-    <button class="hdr-btn hdr-btn-ghost" onclick="doSignOut()">Sign out</button>
+    <div class="hdr-space"></div>
+    <div class="user-chip">
+      <div class="u-avatar" id="uAvatar">?</div>
+      <span id="uName">User</span>
+    </div>
+    <button class="hdr-btn hdr-ghost" onclick="openModal('settingsModal')">⚙ Settings</button>
+    <button class="hdr-btn hdr-ghost" onclick="openExport()">↓ Export</button>
+    <button class="hdr-btn hdr-ghost" onclick="doSignOut()">Sign out</button>
   </header>
 
-  <div class="search-panel">
-    <div class="search-row">
-      <div class="main-search">
-        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" id="mainSearch" placeholder="Search name, email, company…" oninput="filterLocal()">
+  <div class="srch-panel">
+    <div class="srch-row">
+      <div class="srch-wrap">
+        <svg class="srch-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="mainSearch" placeholder="Search contacts or type any term to search Gmail…" oninput="onSearch()">
       </div>
-      <select class="filter-chip" id="filterCat" onchange="filterLocal()">
+      <select class="flt" id="filterCat" onchange="filterLocal()">
         <option value="">All Categories</option>
-        <option>Top Client</option><option>Client</option><option>Prospect</option>
-        <option>Lead</option><option>Partner</option><option>Employee</option>
-        <option>Contractor</option><option>First Nations</option>
-        <option>Government</option><option>Consultant</option><option>Exclude</option>
       </select>
-      <select class="filter-chip" id="filterShow" onchange="filterLocal()">
+      <select class="flt" id="filterShow" onchange="filterLocal()">
         <option value="visible">Hide Excluded</option>
         <option value="all">Show All</option>
         <option value="excluded">Excluded Only</option>
       </select>
-      <button class="btn-sync" id="syncBtn" onclick="runGmailSync()">⟳ Sync Gmail</button>
     </div>
-    <div class="keyword-row">
-      <span class="kw-label">Keywords:</span>
+    <div class="kw-row">
+      <span class="kw-lbl">Keywords:</span>
       <div id="kwTags"></div>
       <button class="kw-add" onclick="openModal('kwModal')">+ Add</button>
     </div>
     <div class="date-row">
-      <span class="date-label">Date range:</span>
-      <input type="date" class="date-input" id="dateFrom" value="2020-01-01">
-      <span style="font-size:13px;color:var(--sage)">to</span>
-      <input type="date" class="date-input" id="dateTo">
-      <button class="date-preset" onclick="setPreset('1y',this)">1 Year</button>
-      <button class="date-preset" onclick="setPreset('2y',this)">2 Years</button>
-      <button class="date-preset" onclick="setPreset('5y',this)">5 Years</button>
-      <button class="date-preset active" onclick="setPreset('all',this)">All Time</button>
+      <span class="date-lbl">Date range:</span>
+      <input type="date" class="date-inp" id="dateFrom" value="2020-01-01">
+      <span style="font-size:12px;color:var(--sage)">to</span>
+      <input type="date" class="date-inp" id="dateTo">
+      <button class="preset active" onclick="setPreset('all',this)">All Time</button>
+      <button class="preset" onclick="setPreset('5y',this)">5 Years</button>
+      <button class="preset" onclick="setPreset('2y',this)">2 Years</button>
+      <button class="preset" onclick="setPreset('1y',this)">1 Year</button>
     </div>
   </div>
 
-  <div class="stats-bar">
-    <div class="stat-item"><div class="stat-val" id="sTotal">—</div><div class="stat-lbl">Contacts</div></div>
-    <div class="stat-item"><div class="stat-val" id="sShowing">—</div><div class="stat-lbl">Showing</div></div>
-    <div class="stat-item"><div class="stat-val" id="sActive">—</div><div class="stat-lbl">Active 90d</div></div>
-    <div class="stat-item"><div class="stat-val" id="sTopScore">—</div><div class="stat-lbl">Top Score</div></div>
-    <div class="stat-item"><div class="stat-val" id="sAvgScore">—</div><div class="stat-lbl">Avg Score</div></div>
-    <div class="stat-item"><div class="stat-val" id="sLastSync">—</div><div class="stat-lbl">Last Sync</div></div>
+  <div class="stats">
+    <div class="st"><div class="st-v" id="sTotal">—</div><div class="st-l">Contacts</div></div>
+    <div class="st"><div class="st-v" id="sShowing">—</div><div class="st-l">Showing</div></div>
+    <div class="st"><div class="st-v" id="sActive">—</div><div class="st-l">Active 90d</div></div>
+    <div class="st"><div class="st-v" id="sTop">—</div><div class="st-l">Top Score</div></div>
+    <div class="st"><div class="st-v" id="sAvg">—</div><div class="st-l">Avg Score</div></div>
+    <div class="st"><div class="st-v" id="sSync">—</div><div class="st-l">Last Sync</div></div>
   </div>
 
-  <div class="results-area">
-    <div class="results-toolbar">
-      <div class="results-count" id="resultsCount"></div>
-      <div class="results-actions">
-        <button class="action-btn active-sort" id="sortScore" onclick="sortBy('score',this)">Score ↓</button>
-        <button class="action-btn" id="sortRecent" onclick="sortBy('recent',this)">Recent</button>
-        <button class="action-btn" id="sortEmails" onclick="sortBy('emails',this)">Emails</button>
+  <div class="results">
+    <div class="res-toolbar">
+      <div class="res-count" id="resCount"></div>
+      <div class="res-actions">
+        <button class="sort-btn active" id="sb-score"  onclick="sortBy('score',this)">Score ↓</button>
+        <button class="sort-btn" id="sb-recent" onclick="sortBy('recent',this)">Recent</button>
+        <button class="sort-btn" id="sb-emails" onclick="sortBy('emails',this)">Emails</button>
       </div>
     </div>
-    <div class="contact-grid" id="contactGrid"></div>
+    <div class="c-grid" id="cGrid"></div>
+    <div id="gmailFound" style="display:none" class="gmail-found">
+      <div class="gmail-found-hdr" id="gmailFoundHdr"></div>
+      <div class="c-grid" id="gmailFoundGrid"></div>
+    </div>
     <div id="stateBox" class="state-box">
-      <div class="state-icon">🌿</div>
-      <div class="state-title">Connect your Gmail to begin</div>
-      <div class="state-sub">Sign in with Google then click "Sync Gmail" to score your contacts by keyword relevance.</div>
+      <div class="state-ico">🌿</div>
+      <div class="state-ttl">Connecting to your Gmail…</div>
+      <div class="state-sub">Sign in with Google and your contacts will start appearing automatically.</div>
     </div>
   </div>
 </div>
 
 <!-- CONTACT MODAL -->
-<div class="modal-overlay" id="contactModal">
-  <div class="modal">
-    <div class="modal-header">
-      <button class="modal-close" onclick="closeModal('contactModal')">×</button>
-      <div class="modal-avatar" id="mAvatar"></div>
-      <div class="modal-name" id="mName"></div>
-      <div class="modal-email" id="mEmail"></div>
-      <div class="modal-company" id="mCompany"></div>
+<div class="mo" id="contactModal">
+  <div class="mo-box">
+    <div class="mo-hdr">
+      <button class="mo-x" onclick="closeModal('contactModal')">×</button>
+      <div class="mo-av" id="mAv"></div>
+      <div class="mo-name" id="mName"></div>
+      <div class="mo-email" id="mEmail"></div>
+      <div class="mo-co" id="mCo"></div>
+      <a class="mo-li" id="mLI" href="#" target="_blank" style="display:none">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6zM2 9h4v12H2z"/><circle cx="4" cy="4" r="2"/></svg>
+        LinkedIn Profile
+      </a>
     </div>
-    <div class="modal-body">
-      <div class="modal-stats">
-        <div class="modal-stat"><div class="modal-stat-val" id="mScore"></div><div class="modal-stat-lbl">Score</div></div>
-        <div class="modal-stat"><div class="modal-stat-val" id="mEmails"></div><div class="modal-stat-lbl">Emails</div></div>
-        <div class="modal-stat"><div class="modal-stat-val" id="mFirst"></div><div class="modal-stat-lbl">First Contact</div></div>
-        <div class="modal-stat"><div class="modal-stat-val" id="mLast"></div><div class="modal-stat-lbl">Last Contact</div></div>
+    <div class="mo-body">
+      <div class="mo-stats">
+        <div class="mo-st"><div class="mo-st-v" id="mScore"></div><div class="mo-st-l">Score</div></div>
+        <div class="mo-st"><div class="mo-st-v" id="mEmails"></div><div class="mo-st-l">Emails</div></div>
+        <div class="mo-st"><div class="mo-st-v" id="mFirst"></div><div class="mo-st-l">First</div></div>
+        <div class="mo-st"><div class="mo-st-v" id="mLast"></div><div class="mo-st-l">Last</div></div>
       </div>
-      <div class="modal-tabs">
-        <button class="modal-tab active" onclick="showTab('details',this)">Details</button>
-        <button class="modal-tab" onclick="showTab('reconnect',this)">✉ Reconnect</button>
-        <button class="modal-tab" onclick="showTab('templates',this)">Templates</button>
+      <div class="mo-tabs">
+        <button class="mo-tab active" onclick="showTab('details',this)">Details</button>
+        <button class="mo-tab" onclick="showTab('reconnect',this)">✉ Reconnect</button>
+        <button class="mo-tab" onclick="showTab('templates',this)">Templates</button>
       </div>
 
-      <!-- Details tab -->
+      <!-- Details -->
       <div id="tabDetails">
         <div class="ai-box" id="mAiBox" style="display:none">
-          <div class="ai-box-label">✦ AI Summary</div>
-          <div class="ai-box-text" id="mAiText"></div>
+          <div class="ai-lbl">✦ AI Summary</div>
+          <div class="ai-txt" id="mAiTxt"></div>
         </div>
-        <div class="section-label">Category</div>
-        <div class="cat-grid" id="mCatGrid"></div>
-        <div class="section-label">Notes</div>
-        <textarea class="notes-field" id="mNotes" placeholder="Add notes about this contact…"></textarea>
+        <div class="cat-grid-wrap">
+          <div class="cat-grid-hdr">
+            <div class="sec-lbl">Category</div>
+            <button class="cat-edit-btn" onclick="openModal('catEditorModal')">✏ Customize</button>
+          </div>
+          <div class="cat-grid" id="mCatGrid"></div>
+        </div>
+        <div class="sec-lbl">Notes</div>
+        <textarea class="notes-fld" id="mNotes" placeholder="Add notes about this contact…"></textarea>
+        <div class="sec-lbl">LinkedIn</div>
+        <div id="liSuggestBox" style="display:none;margin-bottom:12px;border:1.5px solid var(--g200);border-radius:var(--r);overflow:hidden">
+          <div style="background:var(--g50);padding:10px 14px;border-bottom:1px solid var(--g200)">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--g500);margin-bottom:6px">🔍 Suggested LinkedIn Match</div>
+            <div id="liSuggestName" style="font-size:14px;font-weight:600;color:var(--ink)"></div>
+            <div id="liSuggestTitle" style="font-size:12px;color:var(--muted);margin-top:2px"></div>
+            <a id="liSuggestUrl" href="#" target="_blank" style="font-size:11px;color:var(--g500);display:block;margin-top:4px"></a>
+          </div>
+          <div style="display:flex;gap:0;border-top:1px solid var(--g200)">
+            <button onclick="confirmLinkedIn()" style="flex:1;padding:9px;background:var(--g600);color:#fff;border:none;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">✓ Yes, that's them</button>
+            <button onclick="dismissLinkedIn()" style="flex:1;padding:9px;background:#fff;color:var(--muted);border:none;border-left:1px solid var(--g200);font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">✗ Not them</button>
+          </div>
+        </div>
+        <div id="liManualBox" style="margin-bottom:12px">
+          <input type="text" class="mini-inp" id="mLIUrl" placeholder="https://linkedin.com/in/..." style="margin-bottom:8px">
+          <div style="display:flex;gap:8px">
+            <button class="btn-save" style="font-size:12px;padding:6px 14px;flex:1" onclick="suggestLinkedIn()">🔍 Find LinkedIn Profile</button>
+            <button class="btn-copy" style="font-size:12px;padding:6px 14px;flex:1" onclick="enrichLinkedIn()">✦ Enrich from URL</button>
+          </div>
+        </div>
       </div>
 
-      <!-- Reconnect tab -->
+      <!-- Reconnect -->
       <div id="tabReconnect" style="display:none">
-        <div id="reconnectContent">
-          <div class="generating-box">
-            <div class="generating-spinner"></div>
-            <div style="font-size:14px;color:var(--sage)">Generating reconnect messages…</div>
-          </div>
+        <div id="rcContent">
+          <div class="gen-box"><div class="spinner" style="margin:0 auto 10px"></div><div style="font-size:13px;color:var(--sage)">Reading your last emails with this contact…</div></div>
         </div>
       </div>
 
-      <!-- Templates tab -->
+      <!-- Templates -->
       <div id="tabTemplates" style="display:none">
-        <div class="template-list" id="templateList"></div>
-        <button class="btn-new-template" onclick="showTemplateEditor()">+ Create New Template</button>
-        <div id="templateEditor" style="display:none">
-          <div class="template-editor">
-            <input type="text" class="template-name-input" id="tplName" placeholder="Template name (e.g. Friendly Check-in)">
-            <textarea class="template-body-input" id="tplBody" placeholder="Hi {name}, I wanted to reach out about {topic}..."></textarea>
-            <div class="template-hint">Use {name} for contact name, {company} for their company, {topic} for your main keyword</div>
+        <div class="tpl-list" id="tplList"></div>
+        <button class="btn-new-tpl" onclick="showTplEditor()">+ Create New Template</button>
+        <div id="tplEditor" style="display:none">
+          <div class="tpl-ed">
+            <input type="text" class="tpl-ni" id="tplName" placeholder="Template name">
+            <textarea class="tpl-bi" id="tplBody" placeholder="Hi {name}, I wanted to reach out about {topic}..."></textarea>
+            <div class="tpl-hint">Variables: {name} {company} {topic} {title}</div>
           </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn-cancel" onclick="hideTemplateEditor()">Cancel</button>
-            <button class="btn-save" onclick="saveTemplate()">Save Template</button>
+          <div style="display:flex;gap:7px;justify-content:flex-end">
+            <button class="btn-cancel" onclick="hideTplEditor()">Cancel</button>
+            <button class="btn-save" onclick="saveTpl()">Save Template</button>
           </div>
         </div>
       </div>
     </div>
-    <div class="modal-footer">
+    <div class="mo-footer">
       <button class="btn-cancel" onclick="closeModal('contactModal')">Cancel</button>
       <button class="btn-save" onclick="saveContact()">Save Contact</button>
     </div>
   </div>
 </div>
 
+<!-- SETTINGS MODAL -->
+<div class="mo" id="settingsModal">
+  <div class="mo-box" style="width:520px">
+    <div class="mo-hdr" style="padding:20px 24px">
+      <button class="mo-x" onclick="closeModal('settingsModal')">×</button>
+      <div class="mo-name" style="font-size:18px">Settings</div>
+    </div>
+    <div class="mo-body">
+      <div class="settings-section">
+        <div class="settings-title">Email Signature</div>
+        <textarea class="sig-area" id="sigArea" placeholder="Rob Lacey&#10;Delta Remediation&#10;rlacey@deltaremediation.com&#10;www.deltaremediation.com&#10;Calgary, Alberta&#10;T: (403) xxx-xxxx"></textarea>
+        <div class="sig-hint">This signature is automatically added to all reconnect messages and templates.</div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">Sync Settings</div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">Sync to Google Contacts</div><div class="toggle-sub">Classified contacts (except Exclude) become real Google Contacts</div></div>
+          <label class="toggle"><input type="checkbox" id="toggleGContacts"><div class="toggle-slider"></div></label>
+        </div>
+        <div class="toggle-row">
+          <div><div class="toggle-label">Background learning</div><div class="toggle-sub">Automatically scan inbox when app opens</div></div>
+          <label class="toggle"><input type="checkbox" id="toggleBg" checked><div class="toggle-slider"></div></label>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">Anthropic API Key (for AI features)</div>
+        <input type="password" class="mini-inp" id="anthropicKey" placeholder="sk-ant-api03-..." style="margin-bottom:6px">
+        <div class="sig-hint">Used for AI reconnect messages and LinkedIn enrichment. Never shared.</div>
+      </div>
+    </div>
+    <div class="mo-footer">
+      <button class="btn-cancel" onclick="closeModal('settingsModal')">Cancel</button>
+      <button class="btn-save" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- CAT EDITOR MODAL -->
+<div class="mo" id="catEditorModal">
+  <div class="mo-box" style="width:440px">
+    <div class="mo-hdr" style="padding:20px 24px">
+      <button class="mo-x" onclick="closeModal('catEditorModal')">×</button>
+      <div class="mo-name" style="font-size:18px">Customize Categories</div>
+      <div class="mo-email">Drag to reorder • Click name to rename</div>
+    </div>
+    <div class="mo-body">
+      <div class="cat-editor-list" id="catEdList"></div>
+      <button class="btn-add-cat" onclick="addCat()">+ Add Category</button>
+    </div>
+    <div class="mo-footer">
+      <button class="btn-cancel" onclick="closeModal('catEditorModal')">Cancel</button>
+      <button class="btn-save" onclick="saveCats()">Save Categories</button>
+    </div>
+  </div>
+</div>
+
 <!-- ADD KEYWORD MODAL -->
-<div class="modal-overlay" id="kwModal">
-  <div class="mini-modal">
-    <div class="mini-modal-title">Add Keyword</div>
-    <input type="text" class="mini-input" id="kwInput" placeholder="e.g. remediation, proposal, BioLogix…" onkeydown="if(event.key==='Enter')confirmAddKw()">
+<div class="mo" id="kwModal">
+  <div class="mini-mo">
+    <div class="mini-ttl">Add Keyword</div>
+    <input type="text" class="mini-inp" id="kwInput" placeholder="e.g. remediation, proposal, Africa…" onkeydown="if(event.key==='Enter')confirmKw()">
     <div class="mini-actions">
       <button class="btn-cancel" onclick="closeModal('kwModal')">Cancel</button>
-      <button class="btn-save" onclick="confirmAddKw()">Add</button>
+      <button class="btn-save" onclick="confirmKw()">Add</button>
     </div>
   </div>
 </div>
 
 <!-- EXPORT MODAL -->
-<div class="modal-overlay" id="exportModal">
-  <div class="modal" style="width:520px">
-    <div class="modal-header" style="padding:20px 24px">
-      <button class="modal-close" onclick="closeModal('exportModal')">×</button>
-      <div class="modal-name" style="font-size:18px">Export Contacts</div>
-      <div class="modal-email">Current filtered view as CSV</div>
+<div class="mo" id="exportModal">
+  <div class="mo-box" style="width:500px">
+    <div class="mo-hdr" style="padding:18px 22px">
+      <button class="mo-x" onclick="closeModal('exportModal')">×</button>
+      <div class="mo-name" style="font-size:17px">Export Contacts</div>
+      <div class="mo-email">Current filtered view as CSV</div>
     </div>
-    <div class="modal-body">
+    <div class="mo-body">
       <textarea class="export-area" id="exportArea" readonly></textarea>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
+      <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn-cancel" onclick="closeModal('exportModal')">Close</button>
-        <button class="btn-save" onclick="downloadCSV()">↓ Download CSV</button>
+        <button class="btn-save" onclick="dlCSV()">↓ Download CSV</button>
       </div>
     </div>
   </div>
@@ -472,241 +611,423 @@ body { font-family: 'Outfit', sans-serif; background: var(--cream); color: var(-
 
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────────────────
-var CLIENT_ID = '726544492881-0t682k52jn1b2fsuq83hlid2ddqotruc.apps.googleusercontent.com';
-var SCOPES    = 'https://www.googleapis.com/auth/gmail.readonly';
-var API_KEY   = ''; // optional for quota
+var GOOGLE_CLIENT_ID = '726544492881-0t682k52jn1b2fsuq83hlid2ddqotruc.apps.googleusercontent.com';
+var GMAIL_SCOPE      = 'https://www.googleapis.com/auth/gmail.readonly';
+var CONTACTS_SCOPE   = 'https://www.googleapis.com/auth/contacts';
 
-// Fallback Apps Script for saving classifications/notes
-var APPS_SCRIPT_URL   = 'https://script.google.com/macros/s/AKfycbzYcaiPlosUF-oAP6_orVy1Dl5pyhKjGXSBs5S2J5Ba0cwgrQm_0sbnuqH7-Hlp08V3iQ/exec';
-var APPS_SCRIPT_TOKEN = 'DeltaCRM2026secret';
+// ── DEFAULT CATEGORIES ────────────────────────────────────────────────────────
+var DEFAULT_CATS = [
+  {name:'Top Client',    color:'#166534',bg:'#dcfce7',cls:'p-tc'},
+  {name:'Client',        color:'#1e40af',bg:'#dbeafe',cls:'p-cl'},
+  {name:'Prospect',      color:'#9a3412',bg:'#ffedd5',cls:'p-pr'},
+  {name:'Lead',          color:'#9d174d',bg:'#fce7f3',cls:'p-ld'},
+  {name:'Partner',       color:'#5b21b6',bg:'#ede9fe',cls:'p-pa'},
+  {name:'Employee',      color:'#075985',bg:'#e0f2fe',cls:'p-em'},
+  {name:'Contractor',    color:'#6b21a8',bg:'#f3e8ff',cls:'p-co'},
+  {name:'First Nations', color:'#92400e',bg:'#fef3c7',cls:'p-fn'},
+  {name:'Government',    color:'#3730a3',bg:'#e0e7ff',cls:'p-gv'},
+  {name:'Consultant',    color:'#166534',bg:'#f0fdf4',cls:'p-cn'},
+  {name:'Exclude',       color:'#6b7280',bg:'#f3f4f6',cls:'p-ex'},
+];
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
-var allContacts  = [];
-var filtered     = [];
-var activeContact= null;
-var selectedCat  = '';
-var sortMode     = 'score';
-var isDemo       = false;
-var accessToken  = null;
-var keywords     = JSON.parse(localStorage.getItem('gcrm_kw')    || '["proposal","project","biologix","in situ","ex situ"]');
-var userNotes    = JSON.parse(localStorage.getItem('gcrm_notes') || '{}');
-var userCats     = JSON.parse(localStorage.getItem('gcrm_cats')  || '{}');
-var templates    = JSON.parse(localStorage.getItem('gcrm_tpls')  || '[]');
+var allContacts   = [];
+var filtered      = [];
+var gmailNew      = [];
+var activeContact = null;
+var selectedCat   = '';
+var sortMode      = 'score';
+var isDemo        = false;
+var accessToken   = null;
+var currentUser   = null;
+var bgSyncing     = false;
+var searchTimer   = null;
 
-var CATS = [
-  {name:'Top Client',    cls:'cat-top-client',    color:'#166534',bg:'#dcfce7'},
-  {name:'Client',        cls:'cat-client',        color:'#1e40af',bg:'#dbeafe'},
-  {name:'Prospect',      cls:'cat-prospect',      color:'#9a3412',bg:'#ffedd5'},
-  {name:'Lead',          cls:'cat-lead',          color:'#9d174d',bg:'#fce7f3'},
-  {name:'Partner',       cls:'cat-partner',       color:'#5b21b6',bg:'#ede9fe'},
-  {name:'Employee',      cls:'cat-employee',      color:'#075985',bg:'#e0f2fe'},
-  {name:'Contractor',    cls:'cat-contractor',    color:'#6b21a8',bg:'#f3e8ff'},
-  {name:'First Nations', cls:'cat-first-nations', color:'#92400e',bg:'#fef3c7'},
-  {name:'Government',    cls:'cat-government',    color:'#3730a3',bg:'#e0e7ff'},
-  {name:'Consultant',    cls:'cat-consultant',    color:'#166534',bg:'#f0fdf4'},
-  {name:'Exclude',       cls:'cat-exclude',       color:'#6b7280',bg:'#f3f4f6'},
-];
+var keywords  = JSON.parse(localStorage.getItem('gcrm_kw')    || '["proposal","project","biologix","in situ","ex situ"]');
+var userNotes = JSON.parse(localStorage.getItem('gcrm_notes') || '{}');
+var userCats  = JSON.parse(localStorage.getItem('gcrm_cats')  || '{}');
+var templates = JSON.parse(localStorage.getItem('gcrm_tpls')  || '[]');
+var cats      = JSON.parse(localStorage.getItem('gcrm_cats_custom') || JSON.stringify(DEFAULT_CATS));
+var signature = localStorage.getItem('gcrm_sig') || '';
+var anthropicKey = localStorage.getItem('gcrm_akey') || '';
 
 var AVATAR_COLORS = ['#155c2c','#1e40af','#9a3412','#5b21b6','#075985','#92400e','#3730a3','#166534'];
 
-// ── GOOGLE AUTH ───────────────────────────────────────────────────────────────
-var tokenClient;
-
-function signInWithGoogle() {
-  try {
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: SCOPES,
-      callback: function(resp) {
-        if (resp.error) { showToast('⚠ Sign in failed'); return; }
-        accessToken = resp.access_token;
-        // Get user info
-        fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: 'Bearer ' + accessToken }
-        }).then(function(r){ return r.json(); }).then(function(u) {
-          var name = u.name || u.email || 'User';
-          var init = name.split(' ').map(function(p){ return p[0]; }).slice(0,2).join('').toUpperCase();
-          showApp(name, init);
-          showToast('✓ Connected as ' + name);
-        });
-      }
-    });
-    tokenClient.requestAccessToken();
-  } catch(e) {
-    showToast('⚠ Google API not loaded — using demo mode');
-    enterDemo();
-  }
+// ── SIGN IN ───────────────────────────────────────────────────────────────────
+function signIn() {
+  var fb = window._firebase;
+  if (!fb) { showToast('Loading… try again in a second'); return; }
+  fb.signInWithPopup(fb.auth, fb.provider).then(function(result) {
+    var cred = result._tokenResponse || {};
+    accessToken = result.user.stsTokenManager?.accessToken || '';
+    // Get OAuth token for Gmail API
+    var credential = result.credential;
+    if (credential && credential.accessToken) accessToken = credential.accessToken;
+  }).catch(function(err) {
+    showToast('⚠ Sign in failed: ' + err.message);
+  });
 }
 
-function showApp(name, initial) {
+// Wait for auth state
+function initAuth() {
+  var fb = window._firebase;
+  if (!fb) { setTimeout(initAuth, 300); return; }
+  fb.onAuthStateChanged(fb.auth, function(user) {
+    if (user) {
+      currentUser = user;
+      showApp(user.displayName || user.email, user.photoURL);
+      loadFromFirebase();
+    } else {
+      showLanding();
+    }
+  });
+}
+
+function showApp(name, photoURL) {
   document.getElementById('landing').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
+  document.getElementById('app').style.display     = 'flex';
   document.getElementById('app').style.flexDirection = 'column';
-  document.getElementById('userName').textContent  = name;
-  document.getElementById('userInitial').textContent = initial;
+  document.getElementById('uName').textContent = name.split(' ')[0];
   document.getElementById('dateTo').value = new Date().toISOString().slice(0,10);
+
+  var av = document.getElementById('uAvatar');
+  if (photoURL) {
+    av.innerHTML = '<img src="' + photoURL + '" alt="">';
+  } else {
+    av.textContent = name.charAt(0).toUpperCase();
+  }
+
   renderKeywords();
+  populateCatFilter();
+  loadSettings();
+  animateImpactCounters();
 }
 
-function doSignOut() {
-  if (accessToken) google.accounts.oauth2.revoke(accessToken);
-  accessToken  = null;
-  allContacts  = [];
-  filtered     = [];
-  isDemo       = false;
+function showLanding() {
   document.getElementById('landing').style.display = 'flex';
   document.getElementById('app').style.display     = 'none';
 }
 
-function enterDemo() {
-  isDemo      = true;
-  accessToken = 'demo';
-  allContacts = getDemoData();
-  showApp('Demo User', 'DU');
-  renderAll();
-  showToast('✓ Demo mode loaded');
+function doSignOut() {
+  var fb = window._firebase;
+  if (fb) fb.signOut(fb.auth);
+  allContacts = []; filtered = []; accessToken = null; currentUser = null;
+  showLanding();
 }
 
-// ── GMAIL SYNC ────────────────────────────────────────────────────────────────
-async function runGmailSync() {
-  if (isDemo) { showToast('Demo mode — connect Gmail for real data'); return; }
-  if (!accessToken) { showToast('Please sign in first'); return; }
+// ── FIREBASE LOAD/SAVE ────────────────────────────────────────────────────────
+async function loadFromFirebase() {
+  if (!currentUser) return;
+  var fb = window._firebase;
+  try {
+    showStateBox('loading', 'Loading your contacts…', 'Checking saved data');
+    var colRef = fb.collection(fb.db, 'users', currentUser.uid, 'contacts');
+    var snap   = await fb.getDocs(colRef);
+    var loaded = [];
+    snap.forEach(function(d){ loaded.push(d.data()); });
 
-  var btn = document.getElementById('syncBtn');
-  btn.disabled = true; btn.textContent = '⟳ Syncing…';
-  showStateBox('loading', 'Scanning your Gmail…', 'This may take a minute depending on your email history.');
+    if (loaded.length > 0) {
+      allContacts = loaded;
+      renderAll();
+      showToast('✓ ' + loaded.length + ' contacts loaded');
+      document.getElementById('sSync').textContent = localStorage.getItem('gcrm_lastSync') || '—';
+    } else {
+      showStateBox('empty', 'No contacts yet', 'Starting background Gmail scan…');
+    }
+
+    // Start background learning
+    if (document.getElementById('toggleBg').checked) {
+      startBackgroundSync();
+    }
+
+  } catch(e) {
+    showStateBox('empty', 'Ready to scan', 'Click below or wait for background sync');
+    startBackgroundSync();
+  }
+}
+
+async function saveContactToFirebase(contact) {
+  if (!currentUser || isDemo) return;
+  var fb = window._firebase;
+  try {
+    var id = contact.email.replace(/[.#$\[\]]/g,'_');
+    await fb.setDoc(fb.doc(fb.db,'users',currentUser.uid,'contacts',id), contact);
+  } catch(e) { /* silent */ }
+}
+
+async function saveAllToFirebase() {
+  if (!currentUser || isDemo || allContacts.length === 0) return;
+  var fb = window._firebase;
+  try {
+    var batch = fb.writeBatch(fb.db);
+    allContacts.forEach(function(c) {
+      var id  = c.email.replace(/[.#$\[\]]/g,'_');
+      var ref = fb.doc(fb.db,'users',currentUser.uid,'contacts',id);
+      batch.set(ref, c);
+    });
+    await batch.commit();
+  } catch(e) { /* silent */ }
+}
+
+// ── BACKGROUND GMAIL SYNC ─────────────────────────────────────────────────────
+async function startBackgroundSync() {
+  if (bgSyncing || isDemo) return;
+  if (!accessToken && currentUser) {
+    // Try to get token via re-auth silently
+    showToast('Sign in again to enable Gmail sync');
+    return;
+  }
+  if (!accessToken) return;
+
+  bgSyncing = true;
+  showLearning(true, 'Learning your inbox…');
 
   try {
     var dateFrom = document.getElementById('dateFrom').value;
     var dateTo   = document.getElementById('dateTo').value;
-    var myEmail  = document.getElementById('mEmail').textContent || '';
-
-    // Build Gmail search query
-    var query = keywords.map(function(kw){ return '"' + kw + '"'; }).join(' OR ');
+    var query    = keywords.map(function(kw){ return '"'+kw+'"'; }).join(' OR ');
     if (dateFrom) query += ' after:' + dateFrom.replace(/-/g,'/');
     if (dateTo)   query += ' before:' + dateTo.replace(/-/g,'/');
 
-    var contacts = {};
-    var pageToken = null;
-    var processed = 0;
+    var existing   = {};
+    allContacts.forEach(function(c){ existing[c.email] = c; });
+    var newlyFound = {};
+    var pageToken  = null;
+    var processed  = 0;
+    var batchSize  = 100;
 
     do {
-      var url = 'https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=500&q=' + encodeURIComponent(query);
+      var url = 'https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults='+batchSize+'&q='+encodeURIComponent(query);
       if (pageToken) url += '&pageToken=' + pageToken;
 
-      var res  = await gmailFetch(url);
+      var res  = await gFetch(url);
+      if (!res.ok) break;
       var data = await res.json();
       var threads = data.threads || [];
       pageToken   = data.nextPageToken || null;
 
-      for (var t of threads) {
-        var tRes  = await gmailFetch('https://gmail.googleapis.com/gmail/v1/users/me/threads/' + t.id + '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date');
-        var tData = await tRes.json();
-        var msgs  = tData.messages || [];
-
-        // Check if user replied in this thread
-        var userReplied = msgs.some(function(m) {
-          var from = getHeader(m, 'From') || '';
-          return from.toLowerCase().indexOf('@deltaremediation.com') > -1 ||
-                 from.toLowerCase().indexOf(accessToken ? 'me' : '') > -1;
-        });
-
-        msgs.forEach(function(msg) {
-          var from    = getHeader(msg, 'From') || '';
-          var subject = getHeader(msg, 'Subject') || '';
-          var date    = getHeader(msg, 'Date') || '';
-
-          var emailMatch = from.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
-          if (!emailMatch) return;
-
-          var email = emailMatch[0].toLowerCase();
-          if (isSpam(email)) return;
-
-          var nameMatch = from.match(/^([^<]+)</);
-          var name = nameMatch ? nameMatch[1].trim().replace(/"/g,'') : email;
-
-          var score = 0;
-          var subjectLower = subject.toLowerCase();
-          keywords.forEach(function(kw) {
-            var re = new RegExp(kw.replace(/[-\/\\^$*+?.()|[\]{}]/g,'\\$&'), 'gi');
-            var m = subjectLower.match(re);
-            if (m) score += m.length;
-          });
-
-          var d = date ? new Date(date) : new Date();
-
-          if (!contacts[email]) {
-            contacts[email] = {
-              name: name, email: email,
-              company: extractCompany(email),
-              firstContact: d, lastContact: d,
-              emailCount: 0, keywordScore: 0,
-              lastSubject: subject,
-              classification: userCats[email] || '',
-              notes: userNotes[email] || ''
-            };
-          }
-          var c = contacts[email];
-          c.emailCount++;
-          c.keywordScore += score;
-          if (d < c.firstContact) { c.firstContact = d; }
-          if (d > c.lastContact)  { c.lastContact  = d; c.lastSubject = subject; }
-        });
-
-        processed++;
-        if (processed % 20 === 0) {
-          showStateBox('loading', 'Scanning… ' + processed + ' threads processed', 'Building your contact scores');
-        }
+      // Process threads in parallel batches of 10
+      for (var i=0; i<threads.length; i+=10) {
+        var batch = threads.slice(i, i+10);
+        await Promise.all(batch.map(function(t){ return processThread(t, existing, newlyFound); }));
+        processed += batch.length;
+        showLearning(true, 'Learning… ' + processed + ' threads');
       }
-    } while (pageToken && processed < 2000);
 
-    allContacts = Object.values(contacts).map(function(c) {
-      return {
-        name: c.name, email: c.email, company: c.company,
-        'keyword score': c.keywordScore,
-        'email count':   c.emailCount,
-        'first contact': c.firstContact.toISOString().slice(0,10),
-        'last contact':  c.lastContact.toISOString().slice(0,10),
-        'last subject':  c.lastSubject,
-        classification:  c.classification,
-        notes:           c.notes
-      };
-    });
+      // Progressively add new contacts to UI
+      var newArr = Object.values(newlyFound);
+      if (newArr.length > 0) {
+        newArr.forEach(function(c) {
+          if (!existing[c.email]) {
+            existing[c.email] = c;
+            allContacts.push(c);
+          } else {
+            // Merge scores
+            existing[c.email]['keyword score'] = (parseInt(existing[c.email]['keyword score']||0)) + c._deltaScore;
+            existing[c.email]['email count']   = (parseInt(existing[c.email]['email count']||0))   + c._deltaCount;
+          }
+        });
+        newlyFound = {};
+        renderAll();
+      }
 
-    document.getElementById('sLastSync').textContent = new Date().toLocaleDateString();
-    renderAll();
-    showToast('✓ ' + allContacts.length + ' contacts scored');
+    } while (pageToken && processed < 5000);
+
+    // Final save
+    await saveAllToFirebase();
+    var now = new Date().toLocaleDateString();
+    localStorage.setItem('gcrm_lastSync', now);
+    document.getElementById('sSync').textContent = now;
+    showLearning(false);
+    showToast('✓ Inbox scan complete — ' + allContacts.length + ' contacts');
+
+    // Sync to Google Contacts if enabled
+    if (document.getElementById('toggleGContacts').checked) {
+      await syncToGoogleContacts();
+    }
 
   } catch(err) {
-    showStateBox('error', 'Sync failed', err.message);
-    showToast('⚠ ' + err.message);
-    console.error(err);
+    showLearning(false);
+    console.error('Sync error:', err);
   }
-
-  btn.disabled = false; btn.textContent = '⟳ Sync Gmail';
+  bgSyncing = false;
 }
 
-function gmailFetch(url) {
-  return fetch(url, { headers: { Authorization: 'Bearer ' + accessToken } });
+async function processThread(t, existing, newlyFound) {
+  try {
+    var res  = await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/threads/'+t.id+'?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date');
+    if (!res.ok) return;
+    var data = await res.json();
+    var msgs = data.messages || [];
+
+    msgs.forEach(function(msg) {
+      var from    = getHdr(msg,'From')||'';
+      var subject = getHdr(msg,'Subject')||'';
+      var date    = getHdr(msg,'Date')||'';
+
+      var em = from.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+      if (!em) return;
+      var email = em[0].toLowerCase();
+      if (isSpam(email)) return;
+
+      var nameM = from.match(/^([^<]+)</);
+      var name  = nameM ? nameM[1].trim().replace(/"/g,'') : email;
+
+      var score = 0;
+      keywords.forEach(function(kw){
+        var re = new RegExp(kw.replace(/[-\/\\^$*+?.()|[\]{}]/g,'\\$&'),'gi');
+        var m  = (subject+' ').match(re);
+        if (m) score += m.length;
+      });
+
+      var d = date ? new Date(date) : new Date();
+
+      if (!newlyFound[email]) {
+        var ex = existing[email];
+        newlyFound[email] = {
+          name:            ex ? ex.name            : name,
+          email:           email,
+          company:         ex ? ex.company         : extractCo(email),
+          'keyword score': ex ? parseInt(ex['keyword score']||0) : 0,
+          'email count':   ex ? parseInt(ex['email count']||0)   : 0,
+          'first contact': ex ? ex['first contact'] : d.toISOString().slice(0,10),
+          'last contact':  ex ? ex['last contact']  : d.toISOString().slice(0,10),
+          'last subject':  ex ? ex['last subject']  : subject,
+          classification:  userCats[email] || (ex ? ex.classification : '') || '',
+          notes:           userNotes[email]|| (ex ? ex.notes          : '') || '',
+          liUrl:           ex ? (ex.liUrl||'') : '',
+          liTitle:         ex ? (ex.liTitle||'') : '',
+          _deltaScore: 0,
+          _deltaCount: 0
+        };
+      }
+
+      var c = newlyFound[email];
+      c._deltaScore = (c._deltaScore||0) + score;
+      c._deltaCount = (c._deltaCount||0) + 1;
+      c['keyword score'] += score;
+      c['email count']++;
+
+      var dStr = d.toISOString().slice(0,10);
+      if (!c['first contact'] || dStr < c['first contact']) c['first contact'] = dStr;
+      if (!c['last contact']  || dStr > c['last contact'])  { c['last contact'] = dStr; c['last subject'] = subject; }
+    });
+  } catch(e) { /* skip thread */ }
 }
 
-function getHeader(msg, name) {
-  var headers = (msg.payload && msg.payload.headers) || [];
-  var h = headers.find(function(h){ return h.name === name; });
-  return h ? h.value : '';
+// ── DUAL SEARCH ───────────────────────────────────────────────────────────────
+var gmailSearchTimer = null;
+
+function onSearch() {
+  filterLocal();
+  var q = document.getElementById('mainSearch').value.trim();
+  if (q.length < 3) { hideGmailFound(); return; }
+
+  clearTimeout(gmailSearchTimer);
+  gmailSearchTimer = setTimeout(function(){ doGmailSearch(q); }, 800);
 }
 
-function isSpam(email) {
-  var blacklist = ['noreply','no-reply','donotreply','mailer','newsletter','marketing','notification','unsubscribe','bounce','postmaster','daemon'];
-  return blacklist.some(function(b){ return email.indexOf(b) > -1; });
+async function doGmailSearch(q) {
+  if (isDemo || !accessToken) return;
+
+  try {
+    var url  = 'https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=50&q='+encodeURIComponent(q);
+    var res  = await gFetch(url);
+    var data = await res.json();
+    var threads = data.threads || [];
+
+    var found = {};
+    var existing = {};
+    allContacts.forEach(function(c){ existing[c.email]=true; });
+
+    for (var t of threads.slice(0,20)) {
+      var tr = await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/threads/'+t.id+'?format=metadata&metadataHeaders=From&metadataHeaders=Subject');
+      var td = await tr.json();
+      (td.messages||[]).forEach(function(msg){
+        var from = getHdr(msg,'From')||'';
+        var em   = from.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+        if (!em) return;
+        var email = em[0].toLowerCase();
+        if (isSpam(email) || existing[email]) return;
+        var nameM = from.match(/^([^<]+)</);
+        found[email] = {
+          name:    nameM ? nameM[1].trim().replace(/"/g,'') : email,
+          email:   email,
+          company: extractCo(email),
+          'keyword score': 0, 'email count': 1,
+          classification: '', notes: '', isNew: true
+        };
+      });
+    }
+
+    var arr = Object.values(found);
+    if (arr.length > 0) {
+      showGmailFound(arr, q);
+    } else {
+      hideGmailFound();
+    }
+  } catch(e) { hideGmailFound(); }
 }
 
-function extractCompany(email) {
-  var domain = email.split('@')[1] || '';
-  var personal = ['gmail.com','hotmail.com','yahoo.com','outlook.com','icloud.com','live.com'];
-  if (personal.indexOf(domain) > -1) return 'Personal';
-  var parts = domain.split('.');
-  return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+function showGmailFound(arr, q) {
+  var box = document.getElementById('gmailFound');
+  var hdr = document.getElementById('gmailFoundHdr');
+  var grid= document.getElementById('gmailFoundGrid');
+  hdr.textContent = 'Also found in Gmail for "' + q + '" (' + arr.length + ' new contacts)';
+  grid.innerHTML  = arr.map(function(c,i){
+    var color = avatarColor(c.email);
+    return '<div class="c-card new-found" style="grid-template-columns:46px 1fr auto">' +
+      '<div class="c-avatar" style="background:'+color+'">'+initials(c.name)+'</div>' +
+      '<div class="c-info"><div class="c-name">'+esc(c.name)+'</div><div class="c-email">'+esc(c.email)+'</div><div class="c-co">'+esc(c.company)+'</div></div>' +
+      '<button class="add-btn" onclick="addNewContact('+i+',event)">+ Add to CRM</button>' +
+    '</div>';
+  }).join('');
+  box.style.display = 'block';
+  window._gmailFoundArr = arr;
+}
+
+function hideGmailFound() {
+  document.getElementById('gmailFound').style.display = 'none';
+}
+
+function addNewContact(i, e) {
+  e.stopPropagation();
+  var c = window._gmailFoundArr[i];
+  if (!c) return;
+  allContacts.push(c);
+  saveContactToFirebase(c);
+  renderAll();
+  showToast('✓ ' + c.name + ' added to CRM');
+  window._gmailFoundArr.splice(i,1);
+  if (window._gmailFoundArr.length===0) hideGmailFound();
+  else showGmailFound(window._gmailFoundArr, document.getElementById('mainSearch').value);
+}
+
+// ── GOOGLE CONTACTS SYNC ──────────────────────────────────────────────────────
+async function syncToGoogleContacts() {
+  if (!accessToken) return;
+  var toSync = allContacts.filter(function(c){
+    return c.classification && c.classification !== 'Exclude';
+  });
+  if (toSync.length === 0) return;
+
+  showToast('Syncing ' + toSync.length + ' contacts to Google…');
+
+  for (var c of toSync.slice(0,50)) { // batch of 50 to avoid quota
+    try {
+      await gFetch('https://people.googleapis.com/v1/people:createContact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          names:          [{ givenName: c.name.split(' ')[0]||'', familyName: c.name.split(' ').slice(1).join(' ')||'' }],
+          emailAddresses: [{ value: c.email }],
+          organizations:  c.company ? [{ name: c.company }] : [],
+          biographies:    c.notes   ? [{ value: 'GCRM: '+c.classification+'\n'+c.notes }] : [{ value: 'GCRM: '+c.classification }],
+        })
+      });
+    } catch(e) { /* skip individual failures */ }
+  }
+  showToast('✓ Google Contacts updated');
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
@@ -720,82 +1041,93 @@ function filterLocal() {
   var catF  = document.getElementById('filterCat').value;
   var showF = document.getElementById('filterShow').value;
 
-  filtered = allContacts.filter(function(c) {
+  filtered = allContacts.filter(function(c){
     var cat = (c.classification||'').trim();
-    var isX = cat === 'Exclude';
-    if (showF === 'visible'  && isX)  return false;
-    if (showF === 'excluded' && !isX) return false;
-    if (catF && cat !== catF) return false;
+    var isX = cat==='Exclude';
+    if (showF==='visible'  && isX)  return false;
+    if (showF==='excluded' && !isX) return false;
+    if (catF && cat!==catF) return false;
     if (q) {
-      var hay = [c.name,c.email,c.company,c.notes].join(' ').toLowerCase();
-      if (hay.indexOf(q) < 0) return false;
+      var hay=[c.name,c.email,c.company,c.notes].join(' ').toLowerCase();
+      if (hay.indexOf(q)<0) return false;
     }
     return true;
   });
 
-  sortBy(sortMode, null, true);
+  doSort(true);
 }
 
-function sortBy(mode, btn, skipFilter) {
+function sortBy(mode, btn) {
   sortMode = mode;
-  if (!skipFilter) filterLocal();
-  if (btn) {
-    document.querySelectorAll('.action-btn').forEach(function(b){ b.classList.remove('active-sort'); });
-    btn.classList.add('active-sort');
-  }
+  document.querySelectorAll('.sort-btn').forEach(function(b){ b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  doSort(false);
+}
+
+function doSort(skipRender) {
   filtered.sort(function(a,b){
-    if (mode==='score')  return (parseInt(b['keyword score']||0))-(parseInt(a['keyword score']||0));
-    if (mode==='recent') return new Date(b['last contact']||0)-new Date(a['last contact']||0);
-    if (mode==='emails') return (parseInt(b['email count']||0))-(parseInt(a['email count']||0));
+    if (sortMode==='score')  return parseInt(b['keyword score']||0)-parseInt(a['keyword score']||0);
+    if (sortMode==='recent') return new Date(b['last contact']||0)-new Date(a['last contact']||0);
+    if (sortMode==='emails') return parseInt(b['email count']||0)-parseInt(a['email count']||0);
     return 0;
   });
-  renderContacts();
+  if (!skipRender) renderContacts();
+  else renderContacts();
   updateStats();
 }
 
-function avatarColor(email) {
+function avatarColor(email){
   var n=0; for(var i=0;i<email.length;i++) n+=email.charCodeAt(i);
   return AVATAR_COLORS[n%AVATAR_COLORS.length];
 }
-function initials(name) {
+function initials(name){
   if(!name) return '?';
   var p=name.trim().split(/\s+/);
   return p.length>1?(p[0][0]+p[p.length-1][0]).toUpperCase():name.substring(0,2).toUpperCase();
 }
+function catCls(name){
+  var c=cats.find(function(x){return x.name===name;});
+  return c?c.cls:'p-none';
+}
 
 function renderContacts() {
-  var grid  = document.getElementById('contactGrid');
+  var grid  = document.getElementById('cGrid');
   var state = document.getElementById('stateBox');
-  if (filtered.length===0 && allContacts.length>0) {
+
+  if (allContacts.length===0) { state.style.display='flex'; grid.innerHTML=''; document.getElementById('resCount').textContent=''; return; }
+  if (filtered.length===0) {
     grid.innerHTML='';
     showStateBox('empty','No results','Try adjusting your search or filters');
-    document.getElementById('resultsCount').textContent='';
+    document.getElementById('resCount').textContent='';
     return;
   }
-  if (allContacts.length===0) { state.style.display='flex'; grid.innerHTML=''; return; }
   state.style.display='none';
-  document.getElementById('resultsCount').textContent = filtered.length + ' contacts';
+  document.getElementById('resCount').textContent = filtered.length + ' contacts';
+
   var now=new Date(), ninety=new Date(now-90*864e5), oneYear=new Date(now-365*864e5);
   grid.innerHTML = filtered.map(function(c,i){
-    var email=c.email||'', name=c.name||email||'—', co=c.company||'';
+    var email=c.email||'', name=c.name||email, co=c.company||'';
     var score=parseInt(c['keyword score']||0), count=parseInt(c['email count']||0);
     var last=c['last contact']||'', cat=(c.classification||'').trim();
-    var catInfo=CATS.find(function(x){return x.name===cat;});
+    var catInfo=cats.find(function(x){return x.name===cat;});
     var lastDate=last?new Date(last):null;
-    var pulseClass=!lastDate?'pulse-cold':lastDate>ninety?'pulse-hot':lastDate>oneYear?'pulse-warm':'pulse-cold';
-    var actLabel=!lastDate?'':lastDate>ninety?'Active':lastDate>oneYear?'Recent':'';
-    var catHtml=cat?'<span class="cat-pill '+(catInfo?catInfo.cls:'cat-none')+'">'+esc(cat)+'</span>':'<span class="cat-pill cat-none">—</span>';
+    var pCls=!lastDate?'pc':lastDate>ninety?'ph':lastDate>oneYear?'pw':'pc';
+    var aLbl=!lastDate?'':lastDate>ninety?'Active':lastDate>oneYear?'Recent':'';
+    var catHtml=cat?'<span class="cat-pill '+(catInfo?catInfo.cls:'p-none')+'" style="'+(catInfo?'background:'+catInfo.bg+';color:'+catInfo.color:'')+'">'+esc(cat)+'</span>':'<span class="cat-pill p-none">—</span>';
     var color=avatarColor(email);
-    return '<div class="contact-card'+(cat==='Exclude'?' excluded':'')+'" onclick="openContact('+i+')">' +
-      '<div class="contact-avatar" style="background:'+color+'">'+initials(name)+'</div>' +
-      '<div class="contact-info"><div class="contact-name">'+esc(name)+'</div><div class="contact-email">'+esc(email)+'</div>'+(co?'<div class="contact-company">'+esc(co)+'</div>':'')+'</div>' +
-      '<div class="contact-score"><div class="score-num">'+score+'</div><div class="score-lbl">score</div></div>' +
-      '<div class="contact-meta"><div class="meta-emails">'+count+' emails</div><div class="meta-date">'+(last?last.slice(0,10):'—')+'</div>'+(actLabel?'<div class="activity-indicator"><div class="pulse '+pulseClass+'"></div>'+actLabel+'</div>':'')+'</div>' +
+    var avHtml = c.liPhoto
+      ? '<div class="c-avatar"><img src="'+c.liPhoto+'" alt=""></div>'
+      : '<div class="c-avatar" style="background:'+color+'">'+initials(name)+'</div>';
+    return '<div class="c-card'+(cat==='Exclude'?' excluded':'')+'" onclick="openContact('+i+')">' +
+      avHtml +
+      '<div class="c-info"><div class="c-name">'+esc(name)+'</div><div class="c-email">'+esc(email)+'</div>'+(co?'<div class="c-co">'+esc(co)+'</div>':'')+(c.liTitle?'<div class="c-co" style="color:var(--g600)">'+esc(c.liTitle)+'</div>':'')+'</div>' +
+      '<div class="c-score"><div class="sc-n">'+score+'</div><div class="sc-l">score</div></div>' +
+      '<div class="c-meta"><div class="c-emails">'+count+' emails</div><div class="c-date">'+(last?last.slice(0,10):'—')+'</div>'+(aLbl?'<div class="act-ind"><div class="pulse '+pCls+'"></div>'+aLbl+'</div>':'')+'</div>' +
       catHtml+'</div>';
   }).join('');
 }
 
-function updateStats() {
+function updateStats(){
   var now=new Date(), ninety=new Date(now-90*864e5);
   var active=allContacts.filter(function(c){return c['last contact']&&new Date(c['last contact'])>ninety;}).length;
   var scores=allContacts.map(function(c){return parseInt(c['keyword score']||0);});
@@ -804,297 +1136,498 @@ function updateStats() {
   document.getElementById('sTotal').textContent   = allContacts.length||'—';
   document.getElementById('sShowing').textContent = filtered.length||'—';
   document.getElementById('sActive').textContent  = active||'—';
-  document.getElementById('sTopScore').textContent= top||'—';
-  document.getElementById('sAvgScore').textContent= avg||'—';
+  document.getElementById('sTop').textContent     = top||'—';
+  document.getElementById('sAvg').textContent     = avg||'—';
 }
 
-function showStateBox(type, title, sub) {
+function showStateBox(type,ttl,sub){
   var box=document.getElementById('stateBox');
-  document.getElementById('contactGrid').innerHTML='';
-  if(type==='loading') {
-    box.innerHTML='<div class="spinner"></div><div class="state-title" style="margin-top:12px">'+esc(title)+'</div><div class="state-sub">'+esc(sub||'')+'</div>';
+  document.getElementById('cGrid').innerHTML='';
+  document.getElementById('resCount').textContent='';
+  if(type==='loading'){
+    box.innerHTML='<div class="spinner"></div><div class="state-ttl" style="margin-top:10px">'+esc(ttl)+'</div><div class="state-sub">'+esc(sub||'')+'</div>';
   } else {
-    var icon=type==='error'?'⚠️':'🔍';
-    box.innerHTML='<div class="state-icon">'+icon+'</div><div class="state-title">'+esc(title)+'</div><div class="state-sub">'+esc(sub||'')+'</div>';
+    box.innerHTML='<div class="state-ico">'+(type==='error'?'⚠️':'🔍')+'</div><div class="state-ttl">'+esc(ttl)+'</div><div class="state-sub">'+esc(sub||'')+'</div>';
   }
   box.style.display='flex';
 }
 
+function showLearning(on, txt){
+  var pill=document.getElementById('learningPill');
+  pill.style.display=on?'flex':'none';
+  if(txt) document.getElementById('learningTxt').textContent=txt;
+}
+
 // ── CONTACT MODAL ─────────────────────────────────────────────────────────────
-function openContact(idx) {
-  activeContact = filtered[idx];
+function openContact(idx){
+  activeContact=filtered[idx];
   var c=activeContact, email=c.email||'', name=c.name||email;
-  document.getElementById('mAvatar').textContent     = initials(name);
-  document.getElementById('mAvatar').style.background= avatarColor(email);
-  document.getElementById('mName').textContent       = name;
-  document.getElementById('mEmail').textContent      = email;
-  document.getElementById('mCompany').textContent    = c.company||'';
-  document.getElementById('mScore').textContent      = c['keyword score']||0;
-  document.getElementById('mEmails').textContent     = c['email count']||0;
-  document.getElementById('mFirst').textContent      = (c['first contact']||'—').slice(0,10);
-  document.getElementById('mLast').textContent       = (c['last contact']||'—').slice(0,10);
-  document.getElementById('mNotes').value            = c.notes||'';
+  var color=avatarColor(email);
+
+  var av=document.getElementById('mAv');
+  if(c.liPhoto){ av.innerHTML='<img src="'+c.liPhoto+'" alt="">'; }
+  else { av.textContent=initials(name); av.style.background=color; }
+
+  document.getElementById('mName').textContent  = name;
+  document.getElementById('mEmail').textContent = email;
+  document.getElementById('mCo').textContent    = c.company||'';
+  document.getElementById('mScore').textContent = c['keyword score']||0;
+  document.getElementById('mEmails').textContent= c['email count']||0;
+  document.getElementById('mFirst').textContent = (c['first contact']||'—').slice(0,10);
+  document.getElementById('mLast').textContent  = (c['last contact']||'—').slice(0,10);
+  document.getElementById('mNotes').value       = c.notes||'';
+  document.getElementById('mLIUrl').value       = c.liUrl||'';
+
+  var liLink=document.getElementById('mLI');
+  if(c.liUrl){ liLink.href=c.liUrl; liLink.style.display='inline-flex'; }
+  else { liLink.style.display='none'; }
 
   var ai=c['ai summary']||'';
-  document.getElementById('mAiBox').style.display = ai ? 'block' : 'none';
-  if(ai) document.getElementById('mAiText').textContent = ai;
+  document.getElementById('mAiBox').style.display=ai?'block':'none';
+  if(ai) document.getElementById('mAiTxt').textContent=ai;
 
-  selectedCat = (c.classification||'').trim();
-  document.getElementById('mCatGrid').innerHTML = CATS.map(function(cat){
-    var sel=selectedCat===cat.name;
-    return '<button class="cat-option'+(sel?' selected':'')+'" style="background:'+cat.bg+';color:'+cat.color+';border-color:'+cat.bg+'" onclick="selectCat(\''+cat.name+'\')">'+cat.name+'</button>';
-  }).join('');
-
-  showTab('details', document.querySelector('.modal-tab'));
+  selectedCat=(c.classification||'').trim();
+  buildCatGrid();
+  showTab('details', document.querySelector('.mo-tab'));
   openModal('contactModal');
 }
 
-function selectCat(name) {
-  selectedCat = selectedCat===name?'':name;
-  document.querySelectorAll('.cat-option').forEach(function(b){
-    b.classList.toggle('selected', b.textContent.trim()===selectedCat);
+function buildCatGrid(){
+  document.getElementById('mCatGrid').innerHTML=cats.map(function(cat){
+    var sel=selectedCat===cat.name;
+    return '<button class="cat-opt'+(sel?' selected':'')+'" style="background:'+cat.bg+';color:'+cat.color+';border-color:'+cat.bg+'" onclick="selectCat(\''+cat.name+'\')">'+esc(cat.name)+'</button>';
+  }).join('');
+}
+
+function selectCat(name){
+  selectedCat=selectedCat===name?'':name;
+  document.querySelectorAll('.cat-opt').forEach(function(b){
+    b.classList.toggle('selected',b.textContent.trim()===selectedCat);
   });
 }
 
-async function saveContact() {
+async function saveContact(){
   if(!activeContact) return;
-  var email=activeContact.email, notes=document.getElementById('mNotes').value;
+  var email=activeContact.email;
+  var notes=document.getElementById('mNotes').value;
+  var liUrl=document.getElementById('mLIUrl').value.trim();
+
   userCats[email]=selectedCat; userNotes[email]=notes;
   localStorage.setItem('gcrm_cats',  JSON.stringify(userCats));
   localStorage.setItem('gcrm_notes', JSON.stringify(userNotes));
-  activeContact.classification=selectedCat; activeContact.notes=notes;
+
+  activeContact.classification=selectedCat;
+  activeContact.notes=notes;
+  activeContact.liUrl=liUrl;
+
   var master=allContacts.find(function(x){return x.email===email;});
-  if(master){master.classification=selectedCat;master.notes=notes;}
-  closeModal('contactModal'); filterLocal(); showToast('✓ Contact saved');
-  if(!isDemo) {
-    try {
-      await fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify({action:'update',token:APPS_SCRIPT_TOKEN,email:email,classification:selectedCat,notes:notes})});
-    } catch(e){}
+  if(master){ master.classification=selectedCat; master.notes=notes; master.liUrl=liUrl; }
+
+  await saveContactToFirebase(activeContact);
+  closeModal('contactModal');
+  filterLocal();
+  showToast('✓ Contact saved');
+
+  if(document.getElementById('toggleGContacts').checked && selectedCat && selectedCat!=='Exclude'){
+    try{
+      await gFetch('https://people.googleapis.com/v1/people:createContact',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          names:[{givenName:activeContact.name.split(' ')[0]||'',familyName:activeContact.name.split(' ').slice(1).join(' ')||''}],
+          emailAddresses:[{value:email}],
+          organizations:activeContact.company?[{name:activeContact.company}]:[],
+          biographies:[{value:'GCRM: '+selectedCat+(notes?'\n'+notes:'')}],
+          urls:liUrl?[{value:liUrl,type:'LinkedIn'}]:[]
+        })
+      });
+      showToast('✓ Saved + added to Google Contacts');
+    } catch(e){ /* skip */ }
   }
 }
 
-// ── MODAL TABS ────────────────────────────────────────────────────────────────
-function showTab(tab, btn) {
+// ── LINKEDIN ENRICHMENT ───────────────────────────────────────────────────────
+var _liSuggestion = null;
+
+async function suggestLinkedIn(){
+  if(!activeContact) return;
+  var c=activeContact;
+  var key=anthropicKey||localStorage.getItem('gcrm_akey')||'';
+  if(!key){ showToast('Add your Anthropic API key in Settings first'); openModal('settingsModal'); return; }
+
+  showToast('Searching for LinkedIn profile…');
+  try{
+    var prompt='Generate the most likely LinkedIn profile URL and details for this person:
+'+
+      'Name: '+c.name+'
+'+
+      'Company: '+(c.company||'unknown')+'
+'+
+      'Email domain: '+(c.email.split('@')[1]||'')+'
+
+'+
+      'Return ONLY a JSON object with keys:
+'+
+      '- url: the most likely linkedin.com/in/[slug] URL
+'+
+      '- displayName: their likely full name as it appears on LinkedIn
+'+
+      '- title: their likely job title
+'+
+      '- confidence: "high", "medium", or "low"
+'+
+      'Base the slug on common LinkedIn URL patterns (firstname-lastname, firstname-lastname-company etc). No other text.';
+
+    var res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})
+    });
+    var data=await res.json();
+    var txt=data.content[0].text.replace(/```json|```/g,'').trim();
+    var info=JSON.parse(txt);
+    _liSuggestion=info;
+
+    document.getElementById('liSuggestName').textContent=info.displayName||c.name;
+    document.getElementById('liSuggestTitle').textContent=(info.title||'')+(info.confidence?'  ·  '+info.confidence+' confidence match':'');
+    document.getElementById('liSuggestUrl').textContent=info.url||'';
+    document.getElementById('liSuggestUrl').href=info.url||'#';
+    document.getElementById('liSuggestBox').style.display='block';
+    showToast('LinkedIn profile suggested — please confirm');
+  } catch(e){ showToast('Could not suggest profile — check API key'); }
+}
+
+async function confirmLinkedIn(){
+  if(!_liSuggestion||!activeContact) return;
+  document.getElementById('mLIUrl').value=_liSuggestion.url||'';
+  if(_liSuggestion.title) activeContact.liTitle=_liSuggestion.title;
+  activeContact.liUrl=_liSuggestion.url||'';
+  document.getElementById('liSuggestBox').style.display='none';
+  document.getElementById('mLI').href=_liSuggestion.url||'#';
+  document.getElementById('mLI').style.display='inline-flex';
+  document.getElementById('mCo').textContent=(activeContact.company||'')+(_liSuggestion.title?' · '+_liSuggestion.title:'');
+  await saveContactToFirebase(activeContact);
+  renderAll();
+  showToast('✓ LinkedIn profile confirmed — enriching details…');
+  await enrichLinkedIn();
+}
+
+function dismissLinkedIn(){
+  _liSuggestion=null;
+  document.getElementById('liSuggestBox').style.display='none';
+  showToast('Dismissed — paste their URL manually below');
+}
+
+async function enrichLinkedIn(){
+  if(!activeContact) return;
+  var c=activeContact;
+  var liUrl=document.getElementById('mLIUrl').value.trim();
+  var key=anthropicKey||localStorage.getItem('gcrm_akey')||'';
+  if(!key){ showToast('Add your Anthropic API key in Settings'); openModal('settingsModal'); return; }
+
+  showToast('Searching LinkedIn info…');
+  try{
+    var prompt='Find LinkedIn information for: '+c.name+' at '+c.company+'. Return ONLY a JSON object with keys: title (job title), location, summary (2 sentences about them professionally). If not found, return {title:"",location:"",summary:""}. No other text.';
+    var res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})
+    });
+    var data=await res.json();
+    var txt=data.content[0].text.replace(/```json|```/g,'').trim();
+    var info=JSON.parse(txt);
+    if(info.title){ activeContact.liTitle=info.title; document.getElementById('mCo').textContent=(c.company||'')+' · '+info.title; }
+    if(info.summary){ activeContact['ai summary']=info.summary; document.getElementById('mAiTxt').textContent=info.summary; document.getElementById('mAiBox').style.display='block'; }
+    if(liUrl) activeContact.liUrl=liUrl;
+    await saveContactToFirebase(activeContact);
+    renderAll();
+    showToast('✓ LinkedIn info enriched');
+  } catch(e){ showToast('Could not enrich — check API key'); }
+}
+
+// ── RECONNECT ─────────────────────────────────────────────────────────────────
+function showTab(tab, btn){
   ['details','reconnect','templates'].forEach(function(t){
-    document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1)).style.display = t===tab?'block':'none';
+    var el=document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1));
+    if(el) el.style.display=t===tab?'block':'none';
   });
-  document.querySelectorAll('.modal-tab').forEach(function(b){ b.classList.remove('active'); });
+  document.querySelectorAll('.mo-tab').forEach(function(b){ b.classList.remove('active'); });
   if(btn) btn.classList.add('active');
   if(tab==='reconnect') generateReconnect();
-  if(tab==='templates') renderTemplates();
+  if(tab==='templates') renderTpls();
 }
 
-// ── AI RECONNECT ──────────────────────────────────────────────────────────────
-async function generateReconnect() {
-  var box = document.getElementById('reconnectContent');
-  box.innerHTML = '<div class="generating-box"><div class="generating-spinner"></div><div style="font-size:14px;color:var(--sage)">Generating reconnect messages…</div></div>';
+async function generateReconnect(){
+  var box=document.getElementById('rcContent');
+  box.innerHTML='<div class="gen-box"><div class="spinner" style="margin:0 auto 10px"></div><div style="font-size:13px;color:var(--sage)">Reading your last emails with this contact…</div></div>';
 
-  var c = activeContact;
-  if (!c) return;
+  var c=activeContact;
+  if(!c){ box.innerHTML='<div style="padding:20px;color:var(--sage)">No contact selected</div>'; return; }
 
-  var prompt = 'You are writing reconnect emails on behalf of Rob Lacey at Delta Remediation, an environmental remediation company in Calgary, Alberta.\n\n' +
-    'Contact: ' + c.name + '\n' +
-    'Company: ' + (c.company||'Unknown') + '\n' +
-    'Last contact: ' + (c['last contact']||'unknown date') + '\n' +
-    'Last email subject: ' + (c['last subject']||'unknown') + '\n' +
-    'Keyword score: ' + (c['keyword score']||0) + ' (based on: ' + keywords.join(', ') + ')\n' +
-    'Category: ' + (c.classification||'Uncategorized') + '\n\n' +
-    'Write exactly 3 short reconnect email options. Each should be 3-5 sentences max. Format as JSON array with objects having "label" and "body" fields. Labels: "Formal", "Friendly", "Brief". The emails should feel natural, reference what you may have discussed, and make it easy to start a conversation. No attachments mentioned. Return ONLY valid JSON, no other text.';
+  var key=anthropicKey||localStorage.getItem('gcrm_akey')||'';
+  var sig=signature||localStorage.getItem('gcrm_sig')||'';
 
-  try {
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 800,
-        messages: [{ role: 'user', content: prompt }]
-      })
+  // Try to get last 3 email subjects/snippets
+  var emailContext='Last known email subject: '+(c['last subject']||'unknown');
+  if(accessToken && !isDemo){
+    try{
+      var res=await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=3&q=from:'+encodeURIComponent(c.email)+' OR to:'+encodeURIComponent(c.email));
+      var data=await res.json();
+      var msgs=data.messages||[];
+      var snippets=[];
+      for(var m of msgs){
+        var mr=await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+m.id+'?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date');
+        var md=await mr.json();
+        var subj=getHdr(md,'Subject')||'';
+        var snip=md.snippet||'';
+        snippets.push('Subject: '+subj+'\nSnippet: '+snip.substring(0,200));
+      }
+      if(snippets.length>0) emailContext='Recent email history:\n'+snippets.join('\n---\n');
+    } catch(e){ /* use fallback */ }
+  }
+
+  var prompt='You are writing reconnect emails on behalf of someone using GCRM.\n\n'+
+    'Contact name: '+c.name+'\n'+
+    'Company: '+(c.company||'unknown')+'\n'+
+    'Job title: '+(c.liTitle||'unknown')+'\n'+
+    'Last contact date: '+(c['last contact']||'unknown')+'\n'+
+    'Keyword score: '+(c['keyword score']||0)+' (topics: '+keywords.join(', ')+')\n'+
+    'Category: '+(c.classification||'uncategorized')+'\n\n'+
+    emailContext+'\n\n'+
+    'Signature to append:\n'+(sig||'[Your signature]')+'\n\n'+
+    'Write exactly 3 short reconnect email options. Each 3-5 sentences max. Append the signature to each. Format as JSON array with objects: {label, subject, body}. Labels: "Formal","Friendly","Brief". Make them genuinely personal based on the email history. Return ONLY valid JSON.';
+
+  if(!key){
+    // Fallback without AI
+    var fallbacks=[
+      {label:'Formal',  subject:'Following up — '+keywords[0],body:'Dear '+(c.name||'there')+',\n\nI hope this finds you well. I wanted to reach out and reconnect regarding our previous discussions around '+keywords[0]+'. I\'d love to explore whether there are opportunities to collaborate.\n\nWould you be available for a brief call?\n\n'+sig},
+      {label:'Friendly',subject:'Checking in!',body:'Hi '+((c.name||'').split(' ')[0]||'there')+',\n\nIt\'s been a while — hope things are going well on your end! I was thinking about our work together around '+keywords[0]+' and wanted to check in.\n\nUp for a quick catch-up?\n\n'+sig},
+      {label:'Brief',   subject:'Quick hello',body:'Hi '+((c.name||'').split(' ')[0]||'there')+',\n\nHope you\'re doing well. Wanted to touch base and see if there\'s anything we can help with.\n\nOpen for a call?\n\n'+sig}
+    ];
+    renderReconnect(fallbacks);
+    return;
+  }
+
+  try{
+    var res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1000,messages:[{role:'user',content:prompt}]})
     });
-    var data = await res.json();
-    var text = data.content[0].text.trim();
-    text = text.replace(/```json|```/g,'').trim();
-    var options = JSON.parse(text);
-    renderReconnectOptions(options, c);
-  } catch(e) {
-    // Fallback templates if API fails
-    renderReconnectOptions([
-      { label: 'Formal',   body: 'Dear ' + (c.name||'there') + ',\n\nI hope this message finds you well. I wanted to reach out and reconnect regarding our previous discussions around ' + keywords[0] + '. I\'d love to explore whether there are opportunities to collaborate further.\n\nWould you be open to a brief call at your convenience?\n\nBest regards,\nRob Lacey\nDelta Remediation' },
-      { label: 'Friendly', body: 'Hi ' + ((c.name||'').split(' ')[0]||'there') + ',\n\nIt\'s been a while! I was thinking about our conversations around ' + keywords[0] + ' and wanted to check in to see how things are going on your end.\n\nWould love to catch up — let me know if you have 15 minutes this week!\n\nCheers,\nRob' },
-      { label: 'Brief',    body: 'Hi ' + ((c.name||'').split(' ')[0]||'there') + ',\n\nHope you\'re doing well. Wanted to reconnect and see if there\'s anything we can help with on the ' + keywords[0] + ' front.\n\nOpen for a quick call?\n\nRob' }
-    ], c);
+    var data=await res.json();
+    var txt=data.content[0].text.replace(/```json|```/g,'').trim();
+    var opts=JSON.parse(txt);
+    renderReconnect(opts);
+  } catch(e){
+    box.innerHTML='<div style="padding:20px;color:var(--sage);text-align:center">Add your Anthropic API key in Settings for AI messages.<br><br><button class="btn-save" onclick="openModal(\'settingsModal\')">Open Settings</button></div>';
   }
 }
 
-function renderReconnectOptions(options, c) {
-  var box = document.getElementById('reconnectContent');
-  box.innerHTML = '<div class="reconnect-options">' +
-    options.map(function(opt, i) {
-      var safeBody = esc(opt.body);
-      var gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(c.email) + '&body=' + encodeURIComponent(opt.body);
-      return '<div class="reconnect-card">' +
-        '<div class="reconnect-card-label"><span>' + esc(opt.label) + '</span></div>' +
-        '<div class="reconnect-card-text">' + safeBody.replace(/\n/g,'<br>') + '</div>' +
-        '<div class="reconnect-card-actions">' +
-          '<button class="btn-copy" onclick="copyText(' + i + ')">Copy</button>' +
-          '<a href="' + gmailUrl + '" target="_blank"><button class="btn-gmail">Open in Gmail ↗</button></a>' +
-        '</div>' +
-      '</div>';
-    }).join('') +
-  '</div>';
-  // Store options for copy
-  window._reconnectOptions = options;
+function renderReconnect(opts){
+  var box=document.getElementById('rcContent');
+  window._rcOpts=opts;
+  box.innerHTML='<div class="rc-options">'+opts.map(function(opt,i){
+    var gmailUrl='https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(activeContact.email)+'&su='+encodeURIComponent(opt.subject||'')+'&body='+encodeURIComponent(opt.body);
+    return '<div class="rc-card">'+
+      '<div class="rc-lbl">'+esc(opt.label)+'</div>'+
+      '<div class="rc-txt">'+esc(opt.body).replace(/\n/g,'<br>')+'</div>'+
+      '<div class="rc-actions">'+
+        '<button class="btn-copy" onclick="copyMsg('+i+')">Copy</button>'+
+        '<a href="'+gmailUrl+'" target="_blank"><button class="btn-gmail">Open in Gmail ↗</button></a>'+
+      '</div>'+
+    '</div>';
+  }).join('')+'</div>';
 }
 
-function copyText(i) {
-  var opt = window._reconnectOptions[i];
-  if (!opt) return;
-  navigator.clipboard.writeText(opt.body).then(function(){
-    showToast('✓ Copied to clipboard');
-  });
+function copyMsg(i){
+  var opt=window._rcOpts[i];
+  if(!opt) return;
+  navigator.clipboard.writeText(opt.body).then(function(){ showToast('✓ Copied'); });
 }
 
 // ── TEMPLATES ─────────────────────────────────────────────────────────────────
-function renderTemplates() {
-  var list = document.getElementById('templateList');
-  if (templates.length === 0) {
-    list.innerHTML = '<div style="font-size:13px;color:var(--sage);text-align:center;padding:16px">No templates yet — create your first one below</div>';
-    return;
-  }
-  list.innerHTML = templates.map(function(t, i) {
-    return '<div class="template-item" onclick="useTemplate('+i+')">' +
-      '<div class="template-item-name">'+esc(t.name)+'</div>' +
-      '<div class="template-item-preview">'+esc(t.body.substring(0,60))+'…</div>' +
-      '<button class="template-delete" onclick="deleteTemplate(event,'+i+')">×</button>' +
+function renderTpls(){
+  var list=document.getElementById('tplList');
+  if(templates.length===0){ list.innerHTML='<div style="font-size:12px;color:var(--sage);padding:12px;text-align:center">No templates yet</div>'; return; }
+  list.innerHTML=templates.map(function(t,i){
+    return '<div class="tpl-item" onclick="useTpl('+i+')">' +
+      '<div class="tpl-name">'+esc(t.name)+'</div>' +
+      '<div class="tpl-prev">'+esc(t.body.substring(0,50))+'…</div>' +
+      '<button class="tpl-del" onclick="delTpl(event,'+i+')">×</button>' +
     '</div>';
   }).join('');
 }
-
-function showTemplateEditor() {
-  document.getElementById('templateEditor').style.display = 'block';
-  document.getElementById('tplName').value = '';
-  document.getElementById('tplBody').value = '';
+function showTplEditor(){ document.getElementById('tplEditor').style.display='block'; document.getElementById('tplName').value=''; document.getElementById('tplBody').value=''; }
+function hideTplEditor(){ document.getElementById('tplEditor').style.display='none'; }
+function saveTpl(){
+  var name=document.getElementById('tplName').value.trim();
+  var body=document.getElementById('tplBody').value.trim();
+  if(!name||!body){ showToast('Fill in both fields'); return; }
+  templates.push({name:name,body:body});
+  localStorage.setItem('gcrm_tpls',JSON.stringify(templates));
+  hideTplEditor(); renderTpls(); showToast('✓ Template saved');
+}
+function delTpl(e,i){ e.stopPropagation(); templates.splice(i,1); localStorage.setItem('gcrm_tpls',JSON.stringify(templates)); renderTpls(); }
+function useTpl(i){
+  var t=templates[i]; if(!t||!activeContact) return;
+  var c=activeContact;
+  var body=t.body.replace(/\{name\}/g,c.name||'').replace(/\{company\}/g,c.company||'').replace(/\{topic\}/g,keywords[0]||'').replace(/\{title\}/g,c.liTitle||'');
+  var sig=signature||localStorage.getItem('gcrm_sig')||'';
+  if(sig && body.indexOf(sig)<0) body+='\n\n'+sig;
+  var url='https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(c.email)+'&body='+encodeURIComponent(body);
+  window.open(url,'_blank');
 }
 
-function hideTemplateEditor() {
-  document.getElementById('templateEditor').style.display = 'none';
+// ── CATEGORY EDITOR ───────────────────────────────────────────────────────────
+function openCatEditor(){
+  renderCatEdList();
+  openModal('catEditorModal');
 }
-
-function saveTemplate() {
-  var name = document.getElementById('tplName').value.trim();
-  var body = document.getElementById('tplBody').value.trim();
-  if (!name || !body) { showToast('Please fill in both fields'); return; }
-  templates.push({ name: name, body: body });
-  localStorage.setItem('gcrm_tpls', JSON.stringify(templates));
-  hideTemplateEditor();
-  renderTemplates();
-  showToast('✓ Template saved');
+function renderCatEdList(){
+  document.getElementById('catEdList').innerHTML=cats.map(function(cat,i){
+    return '<div class="cat-ed-item">' +
+      '<input type="color" class="cat-ed-color" value="'+cat.color+'" onchange="cats['+i+'].color=this.value;cats['+i+'].bg=this.value+\'22\'">' +
+      '<input type="text" class="cat-ed-name" value="'+esc(cat.name)+'" onchange="cats['+i+'].name=this.value">' +
+      '<button class="cat-ed-del" onclick="delCat('+i+')">×</button>' +
+    '</div>';
+  }).join('');
 }
-
-function deleteTemplate(e, i) {
-  e.stopPropagation();
-  templates.splice(i, 1);
-  localStorage.setItem('gcrm_tpls', JSON.stringify(templates));
-  renderTemplates();
+function addCat(){
+  cats.push({name:'New Category',color:'#155c2c',bg:'#d6f5e3',cls:'p-none'});
+  renderCatEdList();
 }
-
-function useTemplate(i) {
-  var t = templates[i];
-  if (!t || !activeContact) return;
-  var c = activeContact;
-  var body = t.body
-    .replace(/\{name\}/g,    c.name||'')
-    .replace(/\{company\}/g, c.company||'')
-    .replace(/\{topic\}/g,   keywords[0]||'');
-  var gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(c.email) + '&body=' + encodeURIComponent(body);
-  window.open(gmailUrl, '_blank');
+function delCat(i){ cats.splice(i,1); renderCatEdList(); }
+function saveCats(){
+  localStorage.setItem('gcrm_cats_custom',JSON.stringify(cats));
+  populateCatFilter();
+  buildCatGrid();
+  closeModal('catEditorModal');
+  showToast('✓ Categories saved');
+}
+function populateCatFilter(){
+  var sel=document.getElementById('filterCat');
+  sel.innerHTML='<option value="">All Categories</option>'+cats.map(function(c){ return '<option>'+esc(c.name)+'</option>'; }).join('');
 }
 
 // ── KEYWORDS ──────────────────────────────────────────────────────────────────
-function renderKeywords() {
-  document.getElementById('kwTags').innerHTML = keywords.map(function(kw,i){
-    return '<span class="kw-tag active">'+esc(kw)+'<button class="kw-remove" onclick="removeKw('+i+',event)">×</button></span>';
+function renderKeywords(){
+  document.getElementById('kwTags').innerHTML=keywords.map(function(kw,i){
+    return '<span class="kw-tag active">'+esc(kw)+'<button class="kw-rm" onclick="rmKw('+i+',event)">×</button></span>';
   }).join('');
 }
-
-function confirmAddKw() {
-  var val = document.getElementById('kwInput').value.trim().toLowerCase();
-  if (val && keywords.indexOf(val)<0) {
-    keywords.push(val);
-    localStorage.setItem('gcrm_kw', JSON.stringify(keywords));
-    renderKeywords();
-    showToast('✓ Keyword added — re-sync to apply');
-  }
+function confirmKw(){
+  var val=document.getElementById('kwInput').value.trim().toLowerCase();
+  if(val && keywords.indexOf(val)<0){ keywords.push(val); localStorage.setItem('gcrm_kw',JSON.stringify(keywords)); renderKeywords(); showToast('✓ Keyword added — re-sync to apply'); }
   closeModal('kwModal');
 }
-
-function removeKw(i, e) {
-  e.stopPropagation();
-  keywords.splice(i,1);
-  localStorage.setItem('gcrm_kw', JSON.stringify(keywords));
-  renderKeywords();
-}
+function rmKw(i,e){ e.stopPropagation(); keywords.splice(i,1); localStorage.setItem('gcrm_kw',JSON.stringify(keywords)); renderKeywords(); }
 
 // ── DATE PRESETS ──────────────────────────────────────────────────────────────
-function setPreset(p, el) {
+function setPreset(p,el){
   var now=new Date(), from=new Date();
-  document.querySelectorAll('.date-preset').forEach(function(b){b.classList.remove('active');});
+  document.querySelectorAll('.preset').forEach(function(b){ b.classList.remove('active'); });
   el.classList.add('active');
   if(p==='1y') from.setFullYear(now.getFullYear()-1);
   else if(p==='2y') from.setFullYear(now.getFullYear()-2);
   else if(p==='5y') from.setFullYear(now.getFullYear()-5);
   else from=new Date('2000-01-01');
-  document.getElementById('dateFrom').value = from.toISOString().slice(0,10);
-  document.getElementById('dateTo').value   = now.toISOString().slice(0,10);
+  document.getElementById('dateFrom').value=from.toISOString().slice(0,10);
+  document.getElementById('dateTo').value=now.toISOString().slice(0,10);
+}
+
+// ── SETTINGS ──────────────────────────────────────────────────────────────────
+function loadSettings(){
+  var sig=localStorage.getItem('gcrm_sig')||'';
+  var key=localStorage.getItem('gcrm_akey')||'';
+  document.getElementById('sigArea').value=sig;
+  document.getElementById('anthropicKey').value=key;
+  signature=sig; anthropicKey=key;
+}
+function saveSettings(){
+  signature=document.getElementById('sigArea').value;
+  anthropicKey=document.getElementById('anthropicKey').value.trim();
+  localStorage.setItem('gcrm_sig', signature);
+  localStorage.setItem('gcrm_akey',anthropicKey);
+  closeModal('settingsModal');
+  showToast('✓ Settings saved');
 }
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────
-function openExport() {
-  var h=['Name','Email','Company','Keyword Score','Email Count','First Contact','Last Contact','Category','Notes'];
+function openExport(){
+  var h=['Name','Email','Company','Keyword Score','Email Count','First Contact','Last Contact','Category','Notes','LinkedIn'];
   var rows=filtered.map(function(c){
-    return [c.name,c.email,c.company||'',c['keyword score']||0,c['email count']||0,c['first contact']||'',c['last contact']||'',c.classification||'',c.notes||'']
+    return [c.name,c.email,c.company||'',c['keyword score']||0,c['email count']||0,c['first contact']||'',c['last contact']||'',c.classification||'',c.notes||'',c.liUrl||'']
       .map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(',');
   });
-  document.getElementById('exportArea').value = h.join(',') + '\n' + rows.join('\n');
+  document.getElementById('exportArea').value=h.join(',')+'\n'+rows.join('\n');
   openModal('exportModal');
 }
-
-function downloadCSV() {
-  var csv=document.getElementById('exportArea').value;
+function dlCSV(){
   var a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.href=URL.createObjectURL(new Blob([document.getElementById('exportArea').value],{type:'text/csv'}));
   a.download='gcrm_'+new Date().toISOString().slice(0,10)+'.csv';
   a.click();
 }
 
+// ── IMPACT COUNTERS ───────────────────────────────────────────────────────────
+function animateImpactCounters(){
+  var targets={impactUsers:1,impactCleanups:1,impactContacts:606};
+  Object.keys(targets).forEach(function(id){
+    var el=document.getElementById(id); if(!el) return;
+    var target=targets[id], current=0, step=Math.ceil(target/40);
+    var iv=setInterval(function(){ current=Math.min(current+step,target); el.textContent=current; if(current>=target) clearInterval(iv); },40);
+  });
+}
+
 // ── UTILS ─────────────────────────────────────────────────────────────────────
-function openModal(id)  { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function showToast(msg) {
+function gFetch(url, opts){
+  var o=opts||{};
+  o.headers=Object.assign({'Authorization':'Bearer '+accessToken}, o.headers||{});
+  return fetch(url,o);
+}
+function getHdr(msg,name){
+  var h=((msg.payload&&msg.payload.headers)||[]).find(function(h){return h.name===name;});
+  return h?h.value:'';
+}
+function isSpam(email){
+  return ['noreply','no-reply','donotreply','mailer','newsletter','marketing','notification','unsubscribe','bounce','postmaster','daemon'].some(function(b){return email.indexOf(b)>-1;});
+}
+function extractCo(email){
+  var d=email.split('@')[1]||'';
+  var personal=['gmail.com','hotmail.com','yahoo.com','outlook.com','icloud.com','live.com'];
+  if(personal.indexOf(d)>-1) return 'Personal';
+  var p=d.split('.');
+  return p[0].charAt(0).toUpperCase()+p[0].slice(1);
+}
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function showToast(msg){
   var t=document.getElementById('toast');
   t.textContent=msg; t.classList.add('show');
-  clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove('show');},3200);
+  clearTimeout(t._t); t._t=setTimeout(function(){ t.classList.remove('show'); },3200);
 }
 
-// ── DEMO DATA ─────────────────────────────────────────────────────────────────
-function getDemoData() {
-  return [
-    {name:'James Thornton',  email:'jthornton@aecom.com',             company:'Aecom',            'keyword score':142,'email count':28,'first contact':'2019-03-12','last contact':'2026-03-15','last subject':'Re: In Situ Remediation Proposal — Phase 2', classification:'Employee',   notes:'Senior PM on all major bids'},
-    {name:'Sarah Mitchell',  email:'smitchell@tetratech.com',         company:'Tetratech',        'keyword score':98, 'email count':19,'first contact':'2020-01-08','last contact':'2026-02-28','last subject':'BioLogix field trial results',               classification:'Top Client', notes:'Lead TetraTech contact'},
-    {name:'Don Kowalski',    email:'don@w2f.ca',                      company:'W2f',              'keyword score':87, 'email count':35,'first contact':'2018-06-20','last contact':'2026-03-30','last subject':'Project proposal follow-up',                 classification:'Top Client', notes:'Long-standing client since 2018'},
-    {name:'Gavin Overbeeke', email:'goverbeeke@aelenv.com',           company:'Aelenv',           'keyword score':79, 'email count':22,'first contact':'2019-11-04','last contact':'2026-04-01','last subject':'BioLogix partnership agreement',             classification:'Partner',    notes:'Co-authored BioLogix field trials'},
-    {name:'Julie Greer',     email:'jgreer@genomealberta.ca',         company:'Genomealberta',    'keyword score':67, 'email count':14,'first contact':'2021-05-17','last contact':'2026-01-26','last subject':'In Situ funding discussion',                 classification:'Prospect',   notes:'Genome Alberta funding interest'},
-    {name:'Keith Fraser',    email:'fraser.keith@aecom.com',          company:'Aecom',            'keyword score':61, 'email count':16,'first contact':'2022-09-01','last contact':'2025-11-27','last subject':'Ex Situ project proposal review',            classification:'Client',     notes:'AECOM Calgary office'},
-    {name:'Angela Vande',    email:'angelaengineer@hotmail.com',      company:'Personal',         'keyword score':54, 'email count':12,'first contact':'2020-07-14','last contact':'2026-03-12','last subject':'Soil remediation consulting',               classification:'Consultant', notes:'P.Eng consultant'},
-    {name:'Michael Lawrenchuk',email:'mlawrenchuk@foxlakecreenation.com',company:'Foxlakecreenation','keyword score':48,'email count':44,'first contact':'2023-01-15','last contact':'2026-01-15','last subject':'Environmental stewardship project',        classification:'First Nations',notes:'Fox Lake Cree Nation'},
-    {name:'Marcus Reid',     email:'mreid@gov.ab.ca',                 company:'Gov',              'keyword score':24, 'email count':7, 'first contact':'2020-11-22','last contact':'2025-06-15','last subject':'Regulatory compliance discussion',          classification:'Government', notes:'Alberta Environment'},
-    {name:'Faith Okafor',    email:'fokafor@deltaremediation.com',    company:'Delta',            'keyword score':18, 'email count':6, 'first contact':'2022-01-10','last contact':'2026-03-28','last subject':'Project coordination update',              classification:'Employee',   notes:'Internal project coord'},
+function enterDemo(){
+  isDemo=true; accessToken='demo';
+  allContacts=[
+    {name:'James Thornton',  email:'jthornton@aecom.com',          company:'Aecom',         'keyword score':142,'email count':28,'first contact':'2019-03-12','last contact':'2026-03-15','last subject':'Re: In Situ Remediation Proposal Phase 2',classification:'Employee',   notes:'Senior PM on all major bids',liTitle:'Senior Project Manager'},
+    {name:'Sarah Mitchell',  email:'smitchell@tetratech.com',      company:'Tetratech',     'keyword score':98, 'email count':19,'first contact':'2020-01-08','last contact':'2026-02-28','last subject':'BioLogix field trial results',              classification:'Top Client', notes:'Lead TetraTech contact',liTitle:'Director of Environmental Services'},
+    {name:'Don Kowalski',    email:'don@w2f.ca',                   company:'W2f',           'keyword score':87, 'email count':35,'first contact':'2018-06-20','last contact':'2026-03-30','last subject':'Project proposal follow-up',                classification:'Top Client', notes:'Long-standing client since 2018'},
+    {name:'Gavin Overbeeke', email:'goverbeeke@aelenv.com',        company:'Aelenv',        'keyword score':79, 'email count':22,'first contact':'2019-11-04','last contact':'2026-04-01','last subject':'BioLogix partnership agreement',            classification:'Partner',    notes:'Co-authored BioLogix field trials',liTitle:'Environmental Engineer'},
+    {name:'Julie Greer',     email:'jgreer@genomealberta.ca',      company:'Genomealberta', 'keyword score':67, 'email count':14,'first contact':'2021-05-17','last contact':'2026-01-26','last subject':'In Situ funding discussion',               classification:'Prospect',   notes:'Genome Alberta funding interest'},
+    {name:'Keith Fraser',    email:'fraser.keith@aecom.com',       company:'Aecom',         'keyword score':61, 'email count':16,'first contact':'2022-09-01','last contact':'2025-11-27','last subject':'Ex Situ project proposal review',          classification:'Client',     notes:'AECOM Calgary office'},
+    {name:'Marcus Reid',     email:'mreid@gov.ab.ca',              company:'Gov',           'keyword score':24, 'email count':7, 'first contact':'2020-11-22','last contact':'2025-06-15','last subject':'Regulatory compliance discussion',         classification:'Government', notes:'Alberta Environment'},
+    {name:'Michael Lawrenchuk',email:'mlawrenchuk@foxlakecreenation.com',company:'Fox Lake Cree',  'keyword score':48,'email count':44,'first contact':'2023-01-15','last contact':'2026-01-15','last subject':'Environmental stewardship project',  classification:'First Nations',notes:'Fox Lake Cree Nation'},
   ];
+  showApp('Demo User','D');
+  renderAll();
+  showToast('✓ Demo mode — sign in with Google for real data');
 }
 
-// Init
-document.getElementById('dateTo').value = new Date().toISOString().slice(0,10);
+// ── INIT ──────────────────────────────────────────────────────────────────────
+document.getElementById('dateTo').value=new Date().toISOString().slice(0,10);
+setTimeout(initAuth, 500);
 </script>
 </body>
 </html>
