@@ -28,7 +28,6 @@
   const db       = getFirestore(app);
   const provider = new GoogleAuthProvider();
   provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
-  provider.addScope('https://www.googleapis.com/auth/contacts');
 
   // Expose to global scope
   window._firebase = { auth, db, provider, signInWithPopup, signOut, onAuthStateChanged,
@@ -358,6 +357,7 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
       <div class="u-avatar" id="uAvatar">?</div>
       <span id="uName">User</span>
     </div>
+    <button class="hdr-btn hdr-primary" onclick="requestGmailAndSync()">⟳ Sync Gmail</button>
     <button class="hdr-btn hdr-ghost" onclick="openModal('settingsModal')">⚙ Settings</button>
     <button class="hdr-btn hdr-ghost" onclick="openExport()">↓ Export</button>
     <button class="hdr-btn hdr-ghost" onclick="doSignOut()">Sign out</button>
@@ -715,6 +715,27 @@ function doSignOut() {
   showLanding();
 }
 
+// ── REQUEST GMAIL TOKEN + SYNC ───────────────────────────────────────────────
+function requestGmailAndSync() {
+  if (isDemo) { showToast('Demo mode — connect real Gmail to sync'); return; }
+  try {
+    var tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
+      callback: function(resp) {
+        if (resp.error) { showToast('⚠ Could not access Gmail: ' + resp.error); return; }
+        accessToken = resp.access_token;
+        showToast('✓ Gmail connected — starting scan…');
+        startBackgroundSync();
+      }
+    });
+    tokenClient.requestAccessToken({prompt: ''});
+  } catch(e) {
+    showToast('⚠ Google API not ready — try again in a moment');
+    console.error(e);
+  }
+}
+
 // ── FIREBASE LOAD/SAVE ────────────────────────────────────────────────────────
 async function loadFromFirebase() {
   if (!currentUser) return;
@@ -737,7 +758,7 @@ async function loadFromFirebase() {
 
     // Start background learning
     if (document.getElementById('toggleBg').checked) {
-      startBackgroundSync();
+      requestGmailAndSync();
     }
 
   } catch(e) {
