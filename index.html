@@ -382,7 +382,7 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
       </select>
     </div>
     <div class="kw-row">
-      <span class="kw-lbl">Keywords:</span>
+      <span class="kw-lbl" title="Keywords drive contact SCORING — higher score = more relevant contact. Search filters who you see.">Keywords (scoring):</span>
       <div id="kwTags"></div>
       <button class="kw-add" onclick="openModal('kwModal')">+ Add</button>
     </div>
@@ -535,7 +535,10 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
       <div class="settings-section">
         <div class="settings-title">Email Signature</div>
         <textarea class="sig-area" id="sigArea" placeholder="Rob Lacey&#10;Delta Remediation&#10;rlacey@deltaremediation.com&#10;www.deltaremediation.com&#10;Calgary, Alberta&#10;T: (403) xxx-xxxx"></textarea>
-        <div class="sig-hint">This signature is automatically added to all reconnect messages and templates.</div>
+        <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+          <button class="btn-copy" onclick="importSignatureFromGmail()" style="font-size:11px;padding:5px 12px">⟳ Import from Gmail</button>
+          <div class="sig-hint" style="margin-top:0">Auto-appended to all reconnect messages and templates.</div>
+        </div>
       </div>
       <div class="settings-section">
         <div class="settings-title">Sync Settings</div>
@@ -675,6 +678,8 @@ function initAuth() {
       currentUser = user;
       showApp(user.displayName || user.email, user.photoURL);
       loadFromFirebase();
+      // Pre-warm the Gmail token silently right after sign-in
+      setTimeout(function(){ ensureToken().catch(function(){}); }, 1500);
     } else {
       showLanding();
     }
@@ -831,89 +836,84 @@ async function saveAllToFirebase() {
 // ── BACKGROUND GMAIL SYNC ─────────────────────────────────────────────────────
 async function startBackgroundSync() {
   if (bgSyncing || isDemo) return;
+
+  // Ensure we have a Gmail token — get one silently if needed
   if (!accessToken) {
-    showToast('Sign in again to enable Gmail sync');
-    return;
+    showLearning(true, 'Connecting to Gmail…');
+    var ok = await ensureToken();
+    if (!ok) { showLearning(false); showToast('⚠ Could not connect to Gmail — try signing in again'); return; }
   }
 
   bgSyncing = true;
-  showLearning(true, 'Learning your inbox…');
 
-  try {
-    // Build keyword query WITHOUT date filters — scan everything, display filtered
-    var query = keywords.map(function(kw){ return '"'+kw+'"'; }).join(' OR ');
+  // Build query — if no keywords, scan all mail; otherwise use keywords
+  var query = keywords.length > 0
+    ? keywords.map(function(kw){ return '"'+kw+'"'; }).join(' OR ')
+    : 'in:all';
 
-    var existing   = {};
-    allContacts.forEach(function(c){ existing[c.email] = c; });
-    var newlyFound = {};
-    var pageToken  = null;
-    var processed  = 0;
-    var batchSize  = 500; // increased from 100
+  // Running totals (real, not fake)
+  var totalThreadsScanned = 0;
+  var totalContactsFound  = 0;
 
-    do {
-      var url = 'https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults='+batchSize+'&q='+encodeURIComponent(query);
-      if (pageToken) url += '&pageToken=' + pageToken;
+  // Start from what we already have
+  var masterContacts = {}; // email -> contact object
+  allContacts.forEach(function(c){ masterContacts[c.email] = Object.assign({}, c); });
 
-      var res  = await gFetch(url);
-      if (!res.ok) break;
-      var data = await res.json();
-      var threads = data.threads || [];
-      pageToken   = data.nextPageToken || null;
+  var pageToken = null;
+  var batchSize = 500;
 
-      for (var i=0; i<threads.length; i+=20) {
-        var batch = threads.slice(i, i+20);
-        await Promise.all(batch.map(function(t){ return processThread(t, existing, newlyFound); }));
-        processed += batch.length;
-        showLearning(true, 'Scanning… ' + processed + ' threads · ' + Object.keys(newlyFound).length + ' contacts found');
-      }
+  showLearning(true, 'Starting Gmail scan…');
 
-      // Progressive render every page
-      var newArr = Object.values(newlyFound);
-      if (newArr.length > 0) {
-        newArr.forEach(function(c) {
-          if (!existing[c.email]) {
-            existing[c.email] = c;
-            allContacts.push(c);
-          } else {
-            existing[c.email]['keyword score'] = Math.max(
-              parseInt(existing[c.email]['keyword score']||0),
-              parseInt(c['keyword score']||0)
-            );
-            existing[c.email]['email count'] = Math.max(
-              parseInt(existing[c.email]['email count']||0),
-              parseInt(c['email count']||0)
-            );
-            if (c['last contact'] > (existing[c.email]['last contact']||'')) {
-              existing[c.email]['last contact'] = c['last contact'];
-              existing[c.email]['last subject'] = c['last subject'];
-            }
-            if (c['first contact'] < (existing[c.email]['first contact']||'9999')) {
-              existing[c.email]['first contact'] = c['first contact'];
-            }
-          }
-        });
-        newlyFound = {};
-        renderAll();
-      }
+  do {
+    var url = 'https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults='+batchSize+'&q='+encodeURIComponent(query);
+    if (pageToken) url += '&pageToken=' + pageToken;
 
-    } while (pageToken && processed < 20000); // increased from 5000
+    // Refresh token if needed before each page
+    if (Date.now() > _tokenExpiry - 120000) await ensureToken();
 
-    await saveAllToFirebase();
-    var now = new Date().toLocaleDateString();
-    localStorage.setItem('gcrm_lastSync', now);
-    document.getElementById('sSync').textContent = now;
-    showLearning(false);
-    showToast('✓ Inbox scan complete — ' + allContacts.length + ' contacts found');
+    var res = await gFetch(url);
+    if (!res.ok) { console.error('Gmail API error:', res.status); break; }
+    var data = await res.json();
+    var threads = data.threads || [];
+    pageToken = data.nextPageToken || null;
 
-    if (document.getElementById('toggleGContacts').checked) {
-      await syncToGoogleContacts();
+    // Process in batches of 20 in parallel
+    for (var i = 0; i < threads.length; i += 20) {
+      var chunk = threads.slice(i, i+20);
+      var pageContacts = {};
+      await Promise.all(chunk.map(function(t){ return processThread(t, masterContacts, pageContacts); }));
+
+      // Merge page results into master
+      Object.keys(pageContacts).forEach(function(email) {
+        var nc = pageContacts[email];
+        if (!masterContacts[email]) {
+          masterContacts[email] = nc;
+          allContacts.push(nc);
+          totalContactsFound++;
+        } else {
+          var ex = masterContacts[email];
+          ex['keyword score'] = (parseInt(ex['keyword score']||0)) + (parseInt(nc['keyword score']||0));
+          ex['email count']   = (parseInt(ex['email count']||0))   + (parseInt(nc['email count']||0));
+          if ((nc['last contact']||'') > (ex['last contact']||''))  { ex['last contact'] = nc['last contact']; ex['last subject'] = nc['last subject']; }
+          if ((nc['first contact']||'9999') < (ex['first contact']||'9999')) ex['first contact'] = nc['first contact'];
+        }
+      });
+
+      totalThreadsScanned += chunk.length;
+      showLearning(true, 'Scanned ' + totalThreadsScanned + ' threads · ' + allContacts.length + ' contacts');
+      renderAll(); // live update as we go
     }
 
-  } catch(err) {
-    showLearning(false);
-    console.error('Sync error:', err);
-    showToast('⚠ Sync error — check console');
-  }
+  } while (pageToken && totalThreadsScanned < 20000);
+
+  await saveAllToFirebase();
+  var now = new Date().toLocaleDateString();
+  localStorage.setItem('gcrm_lastSync', now);
+  document.getElementById('sSync').textContent = now;
+  showLearning(false);
+  showToast('✓ Scan complete — ' + allContacts.length + ' contacts across ' + totalThreadsScanned + ' threads');
+
+  if (document.getElementById('toggleGContacts').checked) await syncToGoogleContacts();
   bgSyncing = false;
 }
 
@@ -1070,13 +1070,19 @@ function addNewContact(i, e) {
   e.stopPropagation();
   var c = window._gmailFoundArr[i];
   if (!c) return;
-  allContacts.push(c);
-  saveContactToFirebase(c);
-  renderAll();
+  // Check not already added
+  var exists = allContacts.find(function(x){ return x.email===c.email; });
+  if (!exists) {
+    allContacts.push(c);
+    saveContactToFirebase(c);
+  }
   showToast('✓ ' + c.name + ' added to CRM');
   window._gmailFoundArr.splice(i,1);
   if (window._gmailFoundArr.length===0) hideGmailFound();
   else showGmailFound(window._gmailFoundArr, document.getElementById('mainSearch').value);
+  // Clear search so new contact is visible in main list
+  document.getElementById('mainSearch').value = '';
+  renderAll();
 }
 
 // ── GOOGLE CONTACTS SYNC ──────────────────────────────────────────────────────
@@ -1116,6 +1122,8 @@ function filterLocal() {
   var q     = (document.getElementById('mainSearch').value||'').toLowerCase();
   var catF  = document.getElementById('filterCat').value;
   var showF = document.getElementById('filterShow').value;
+  var dateFrom = document.getElementById('dateFrom').value || '';
+  var dateTo   = document.getElementById('dateTo').value   || '';
 
   filtered = allContacts.filter(function(c){
     var cat = (c.classification||'').trim();
@@ -1123,8 +1131,11 @@ function filterLocal() {
     if (showF==='visible'  && isX)  return false;
     if (showF==='excluded' && !isX) return false;
     if (catF && cat!==catF) return false;
+    // Date filter — apply to last contact date
+    if (dateFrom && (c['last contact']||'') < dateFrom) return false;
+    if (dateTo   && (c['last contact']||'') > dateTo)   return false;
     if (q) {
-      var hay=[c.name,c.email,c.company,c.notes].join(' ').toLowerCase();
+      var hay=[c.name,c.email,c.company||'',c.notes||'',c['last subject']||''].join(' ').toLowerCase();
       if (hay.indexOf(q)<0) return false;
     }
     return true;
@@ -1618,10 +1629,61 @@ function loadSettings(){
   signature=sig;
 }
 function saveSettings(){
-  signature=document.getElementById('sigArea').value;
+  signature=document.getElementById('sigArea').value.trim();
   localStorage.setItem('gcrm_sig', signature);
   closeModal('settingsModal');
   showToast('✓ Settings saved');
+}
+
+async function importSignatureFromGmail(){
+  showToast('Fetching your last sent email…');
+  var tokenOk = accessToken ? true : await ensureToken();
+  if(!tokenOk){ showToast('⚠ Need Gmail access to import signature'); return; }
+  try{
+    // Get last sent message
+    var res=await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&labelIds=SENT');
+    var data=await res.json();
+    var msgs=data.messages||[];
+    if(!msgs.length){ showToast('No sent emails found'); return; }
+    var mr=await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+msgs[0].id+'?format=full');
+    var md=await mr.json();
+    // Extract plain text body
+    var body='';
+    function extractBody(parts){
+      if(!parts) return;
+      parts.forEach(function(p){
+        if(p.mimeType==='text/plain' && p.body && p.body.data){
+          body=atob(p.body.data.replace(/-/g,'+').replace(/_/g,'/'));
+        }
+        if(p.parts) extractBody(p.parts);
+      });
+    }
+    if(md.payload && md.payload.body && md.payload.body.data){
+      body=atob(md.payload.body.data.replace(/-/g,'+').replace(/_/g,'/'));
+    } else {
+      extractBody(md.payload && md.payload.parts);
+    }
+    // Try to find signature — look for lines after '--' or after 2+ blank lines at end
+    var lines=body.split('\n');
+    var sigStart=-1;
+    for(var i=lines.length-1;i>=0;i--){
+      if(lines[i].trim()==='--'||lines[i].trim()==='—'){ sigStart=i+1; break; }
+    }
+    var sig='';
+    if(sigStart>-1){
+      sig=lines.slice(sigStart).join('\n').trim();
+    } else {
+      // Take last 5 non-empty lines as a guess
+      var nonEmpty=lines.filter(function(l){ return l.trim(); });
+      sig=nonEmpty.slice(-5).join('\n').trim();
+    }
+    if(sig){
+      document.getElementById('sigArea').value=sig;
+      showToast('✓ Signature imported — save settings to apply');
+    } else {
+      showToast('Could not detect signature — paste it manually');
+    }
+  } catch(e){ console.error('Sig import error:',e); showToast('Could not import — paste signature manually'); }
 }
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────
