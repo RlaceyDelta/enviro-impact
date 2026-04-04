@@ -545,11 +545,6 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
           <label class="toggle"><input type="checkbox" id="toggleBg" checked><div class="toggle-slider"></div></label>
         </div>
       </div>
-      <div class="settings-section">
-        <div class="settings-title">Anthropic API Key (for AI features)</div>
-        <input type="password" class="mini-inp" id="anthropicKey" placeholder="sk-ant-api03-..." style="margin-bottom:6px">
-        <div class="sig-hint">Used for AI reconnect messages and LinkedIn enrichment. Never shared.</div>
-      </div>
     </div>
     <div class="mo-footer">
       <button class="btn-cancel" onclick="closeModal('settingsModal')">Cancel</button>
@@ -615,6 +610,9 @@ var GOOGLE_CLIENT_ID = '726544492881-0t682k52jn1b2fsuq83hlid2ddqotruc.apps.googl
 var GMAIL_SCOPE      = 'https://www.googleapis.com/auth/gmail.readonly';
 var CONTACTS_SCOPE   = 'https://www.googleapis.com/auth/contacts';
 
+// ── FIREBASE PROXY URL (replaces direct Anthropic calls) ──────────────────────
+var AI_PROXY_URL = 'https://ai-jhkerdwsbq-uc.a.run.app';
+
 // ── DEFAULT CATEGORIES ────────────────────────────────────────────────────────
 var DEFAULT_CATS = [
   {name:'Top Client',    color:'#166534',bg:'#dcfce7',cls:'p-tc'},
@@ -649,7 +647,6 @@ var userCats  = JSON.parse(localStorage.getItem('gcrm_cats')  || '{}');
 var templates = JSON.parse(localStorage.getItem('gcrm_tpls')  || '[]');
 var cats      = JSON.parse(localStorage.getItem('gcrm_cats_custom') || JSON.stringify(DEFAULT_CATS));
 var signature = localStorage.getItem('gcrm_sig') || '';
-var anthropicKey = localStorage.getItem('gcrm_akey') || '';
 
 var AVATAR_COLORS = ['#155c2c','#1e40af','#9a3412','#5b21b6','#075985','#92400e','#3730a3','#166534'];
 
@@ -660,7 +657,6 @@ function signIn() {
   fb.signInWithPopup(fb.auth, fb.provider).then(function(result) {
     var cred = result._tokenResponse || {};
     accessToken = result.user.stsTokenManager?.accessToken || '';
-    // Get OAuth token for Gmail API
     var credential = result.credential;
     if (credential && credential.accessToken) accessToken = credential.accessToken;
   }).catch(function(err) {
@@ -668,7 +664,6 @@ function signIn() {
   });
 }
 
-// Wait for auth state
 function initAuth() {
   var fb = window._firebase;
   if (!fb) { setTimeout(initAuth, 300); return; }
@@ -756,7 +751,6 @@ async function loadFromFirebase() {
       showStateBox('empty', 'No contacts yet', 'Starting background Gmail scan…');
     }
 
-    // Start background learning
     if (document.getElementById('toggleBg').checked) {
       requestGmailAndSync();
     }
@@ -794,7 +788,6 @@ async function saveAllToFirebase() {
 async function startBackgroundSync() {
   if (bgSyncing || isDemo) return;
   if (!accessToken && currentUser) {
-    // Try to get token via re-auth silently
     showToast('Sign in again to enable Gmail sync');
     return;
   }
@@ -827,7 +820,6 @@ async function startBackgroundSync() {
       var threads = data.threads || [];
       pageToken   = data.nextPageToken || null;
 
-      // Process threads in parallel batches of 10
       for (var i=0; i<threads.length; i+=10) {
         var batch = threads.slice(i, i+10);
         await Promise.all(batch.map(function(t){ return processThread(t, existing, newlyFound); }));
@@ -835,7 +827,6 @@ async function startBackgroundSync() {
         showLearning(true, 'Learning… ' + processed + ' threads');
       }
 
-      // Progressively add new contacts to UI
       var newArr = Object.values(newlyFound);
       if (newArr.length > 0) {
         newArr.forEach(function(c) {
@@ -843,7 +834,6 @@ async function startBackgroundSync() {
             existing[c.email] = c;
             allContacts.push(c);
           } else {
-            // Merge scores
             existing[c.email]['keyword score'] = (parseInt(existing[c.email]['keyword score']||0)) + c._deltaScore;
             existing[c.email]['email count']   = (parseInt(existing[c.email]['email count']||0))   + c._deltaCount;
           }
@@ -854,7 +844,6 @@ async function startBackgroundSync() {
 
     } while (pageToken && processed < 5000);
 
-    // Final save
     await saveAllToFirebase();
     var now = new Date().toLocaleDateString();
     localStorage.setItem('gcrm_lastSync', now);
@@ -862,7 +851,6 @@ async function startBackgroundSync() {
     showLearning(false);
     showToast('✓ Inbox scan complete — ' + allContacts.length + ' contacts');
 
-    // Sync to Google Contacts if enabled
     if (document.getElementById('toggleGContacts').checked) {
       await syncToGoogleContacts();
     }
@@ -1034,7 +1022,7 @@ async function syncToGoogleContacts() {
 
   showToast('Syncing ' + toSync.length + ' contacts to Google…');
 
-  for (var c of toSync.slice(0,50)) { // batch of 50 to avoid quota
+  for (var c of toSync.slice(0,50)) {
     try {
       await gFetch('https://people.googleapis.com/v1/people:createContact', {
         method: 'POST',
@@ -1105,10 +1093,6 @@ function initials(name){
   if(!name) return '?';
   var p=name.trim().split(/\s+/);
   return p.length>1?(p[0][0]+p[p.length-1][0]).toUpperCase():name.substring(0,2).toUpperCase();
-}
-function catCls(name){
-  var c=cats.find(function(x){return x.name===name;});
-  return c?c.cls:'p-none';
 }
 
 function renderContacts() {
@@ -1273,16 +1257,14 @@ var _liSuggestion = null;
 async function suggestLinkedIn(){
   if(!activeContact) return;
   var c=activeContact;
-  var key=anthropicKey||localStorage.getItem('gcrm_akey')||'';
-  if(!key){ showToast('Add your Anthropic API key in Settings first'); openModal('settingsModal'); return; }
 
   showToast('Searching for LinkedIn profile…');
   try{
     var prompt='Generate the most likely LinkedIn profile URL for: Name: '+c.name+', Company: '+(c.company||'unknown')+', Email: '+c.email+'. Return ONLY JSON: {url, displayName, title, confidence} where confidence is high/medium/low. No other text.';
 
-    var res=await fetch('https://api.anthropic.com/v1/messages',{
+    var res=await fetch(AI_PROXY_URL,{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})
     });
     var data=await res.json();
@@ -1296,7 +1278,7 @@ async function suggestLinkedIn(){
     document.getElementById('liSuggestUrl').href=info.url||'#';
     document.getElementById('liSuggestBox').style.display='block';
     showToast('LinkedIn profile suggested — please confirm');
-  } catch(e){ showToast('Could not suggest profile — check API key'); }
+  } catch(e){ showToast('Could not suggest profile — check connection'); }
 }
 
 async function confirmLinkedIn(){
@@ -1324,15 +1306,13 @@ async function enrichLinkedIn(){
   if(!activeContact) return;
   var c=activeContact;
   var liUrl=document.getElementById('mLIUrl').value.trim();
-  var key=anthropicKey||localStorage.getItem('gcrm_akey')||'';
-  if(!key){ showToast('Add your Anthropic API key in Settings'); openModal('settingsModal'); return; }
 
   showToast('Searching LinkedIn info…');
   try{
     var prompt='Find LinkedIn information for: '+c.name+' at '+c.company+'. Return ONLY a JSON object with keys: title (job title), location, summary (2 sentences about them professionally). If not found, return {title:"",location:"",summary:""}. No other text.';
-    var res=await fetch('https://api.anthropic.com/v1/messages',{
+    var res=await fetch(AI_PROXY_URL,{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})
     });
     var data=await res.json();
@@ -1344,7 +1324,7 @@ async function enrichLinkedIn(){
     await saveContactToFirebase(activeContact);
     renderAll();
     showToast('✓ LinkedIn info enriched');
-  } catch(e){ showToast('Could not enrich — check API key'); }
+  } catch(e){ showToast('Could not enrich — check connection'); }
 }
 
 // ── RECONNECT ─────────────────────────────────────────────────────────────────
@@ -1366,10 +1346,8 @@ async function generateReconnect(){
   var c=activeContact;
   if(!c){ box.innerHTML='<div style="padding:20px;color:var(--sage)">No contact selected</div>'; return; }
 
-  var key=anthropicKey||localStorage.getItem('gcrm_akey')||'';
   var sig=signature||localStorage.getItem('gcrm_sig')||'';
 
-  // Try to get last 3 email subjects/snippets
   var emailContext='Last known email subject: '+(c['last subject']||'unknown');
   if(accessToken && !isDemo){
     try{
@@ -1399,21 +1377,10 @@ async function generateReconnect(){
     'Signature to append:\n'+(sig||'[Your signature]')+'\n\n'+
     'Write exactly 3 short reconnect email options. Each 3-5 sentences max. Append the signature to each. Format as JSON array with objects: {label, subject, body}. Labels: "Formal","Friendly","Brief". Make them genuinely personal based on the email history. Return ONLY valid JSON.';
 
-  if(!key){
-    // Fallback without AI
-    var fallbacks=[
-      {label:'Formal',  subject:'Following up — '+keywords[0],body:'Dear '+(c.name||'there')+',\n\nI hope this finds you well. I wanted to reach out and reconnect regarding our previous discussions around '+keywords[0]+'. I\'d love to explore whether there are opportunities to collaborate.\n\nWould you be available for a brief call?\n\n'+sig},
-      {label:'Friendly',subject:'Checking in!',body:'Hi '+((c.name||'').split(' ')[0]||'there')+',\n\nIt\'s been a while — hope things are going well on your end! I was thinking about our work together around '+keywords[0]+' and wanted to check in.\n\nUp for a quick catch-up?\n\n'+sig},
-      {label:'Brief',   subject:'Quick hello',body:'Hi '+((c.name||'').split(' ')[0]||'there')+',\n\nHope you\'re doing well. Wanted to touch base and see if there\'s anything we can help with.\n\nOpen for a call?\n\n'+sig}
-    ];
-    renderReconnect(fallbacks);
-    return;
-  }
-
   try{
-    var res=await fetch('https://api.anthropic.com/v1/messages',{
+    var res=await fetch(AI_PROXY_URL,{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1000,messages:[{role:'user',content:prompt}]})
     });
     var data=await res.json();
@@ -1421,7 +1388,13 @@ async function generateReconnect(){
     var opts=JSON.parse(txt);
     renderReconnect(opts);
   } catch(e){
-    box.innerHTML='<div style="padding:20px;color:var(--sage);text-align:center">Add your Anthropic API key in Settings for AI messages.<br><br><button class="btn-save" onclick="openModal(\'settingsModal\')">Open Settings</button></div>';
+    // Fallback without AI
+    var fallbacks=[
+      {label:'Formal',  subject:'Following up — '+keywords[0],body:'Dear '+(c.name||'there')+',\n\nI hope this finds you well. I wanted to reach out and reconnect regarding our previous discussions around '+keywords[0]+'. I\'d love to explore whether there are opportunities to collaborate.\n\nWould you be available for a brief call?\n\n'+sig},
+      {label:'Friendly',subject:'Checking in!',body:'Hi '+((c.name||'').split(' ')[0]||'there')+',\n\nIt\'s been a while — hope things are going well on your end! I was thinking about our work together around '+keywords[0]+' and wanted to check in.\n\nUp for a quick catch-up?\n\n'+sig},
+      {label:'Brief',   subject:'Quick hello',body:'Hi '+((c.name||'').split(' ')[0]||'there')+',\n\nHope you\'re doing well. Wanted to touch base and see if there\'s anything we can help with.\n\nOpen for a call?\n\n'+sig}
+    ];
+    renderReconnect(fallbacks);
   }
 }
 
@@ -1481,10 +1454,6 @@ function useTpl(i){
 }
 
 // ── CATEGORY EDITOR ───────────────────────────────────────────────────────────
-function openCatEditor(){
-  renderCatEdList();
-  openModal('catEditorModal');
-}
 function renderCatEdList(){
   document.getElementById('catEdList').innerHTML=cats.map(function(cat,i){
     return '<div class="cat-ed-item">' +
@@ -1540,16 +1509,12 @@ function setPreset(p,el){
 // ── SETTINGS ──────────────────────────────────────────────────────────────────
 function loadSettings(){
   var sig=localStorage.getItem('gcrm_sig')||'';
-  var key=localStorage.getItem('gcrm_akey')||'';
   document.getElementById('sigArea').value=sig;
-  document.getElementById('anthropicKey').value=key;
-  signature=sig; anthropicKey=key;
+  signature=sig;
 }
 function saveSettings(){
   signature=document.getElementById('sigArea').value;
-  anthropicKey=document.getElementById('anthropicKey').value.trim();
   localStorage.setItem('gcrm_sig', signature);
-  localStorage.setItem('gcrm_akey',anthropicKey);
   closeModal('settingsModal');
   showToast('✓ Settings saved');
 }
