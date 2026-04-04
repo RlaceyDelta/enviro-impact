@@ -675,21 +675,54 @@ var PERSONAL_DOMAINS = ['gmail.com','hotmail.com','yahoo.com','outlook.com','icl
 // ensureGmailToken() is the single entry point for all Gmail API calls.
 // ════════════════════════════════════════════════════════════════════
 
+// signIn: requests Gmail token FIRST (one popup covers everything),
+// caches it in sessionStorage so syncs never need a popup again.
 function signIn() {
   var fb = window._firebase;
-  if (!fb) { showToast('Loading… try again'); return; }
-  fb.signInWithPopup(fb.auth, fb.provider)
-    .catch(function(err){ showToast('⚠ Sign in failed: ' + err.message); });
+  if (!fb) { showToast('Loading… try again in a second'); return; }
+
+  if (!_tokenClient) {
+    _tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
+      callback: function(resp) {
+        _tokenPending = null;
+        if (resp.error || !resp.access_token) {
+          showToast('⚠ Gmail access needed — please try again');
+          return;
+        }
+        _gmailToken  = resp.access_token;
+        _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
+        sessionStorage.setItem('gcrm_token', _gmailToken);
+        sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
+        fb.signInWithPopup(fb.auth, fb.provider)
+          .catch(function(err) { showToast('⚠ Sign in failed: ' + err.message); });
+      }
+    });
+  }
+  _tokenClient.requestAccessToken({ prompt: 'select_account' });
 }
 
 function initAuth() {
   var fb = window._firebase;
   if (!fb) { setTimeout(initAuth, 300); return; }
+
+  // Restore cached Gmail token from sessionStorage (survives page refresh)
+  var cachedToken  = sessionStorage.getItem('gcrm_token');
+  var cachedExpiry = parseInt(sessionStorage.getItem('gcrm_token_exp') || '0');
+  if (cachedToken && Date.now() < cachedExpiry - 120000) {
+    _gmailToken  = cachedToken;
+    _tokenExpiry = cachedExpiry;
+  }
+
   fb.onAuthStateChanged(fb.auth, function(user) {
     if (user) {
       currentUser = user;
       showApp(user.displayName || user.email, user.photoURL);
       loadFromFirebase();
+      if (!_gmailToken) {
+        setTimeout(function() { ensureGmailToken().catch(function(){}); }, 2000);
+      }
     } else {
       showLanding();
     }
@@ -717,18 +750,28 @@ function doSignOut() {
   var fb = window._firebase;
   if (fb) fb.signOut(fb.auth);
   allContacts = []; filtered = []; _gmailToken = null; _tokenExpiry = 0;
-  currentUser = null; showLanding();
+  _tokenClient = null; _tokenPending = null; currentUser = null;
+  sessionStorage.removeItem('gcrm_token');
+  sessionStorage.removeItem('gcrm_token_exp');
+  showLanding();
 }
 
 // ensureGmailToken — THE single source of truth for Gmail access.
 // Returns the token string, or null if unavailable.
 // Never shows a popup if user already consented — uses prompt:''.
 function ensureGmailToken() {
-  // Return immediately if token is still fresh (>2 min remaining)
+  // Check in-memory token first
   if (_gmailToken && Date.now() < _tokenExpiry - 120000) {
     return Promise.resolve(_gmailToken);
   }
-  // If a request is already in flight, wait for it instead of starting another
+  // Check sessionStorage (survives page refresh within same tab session)
+  var cached    = sessionStorage.getItem('gcrm_token');
+  var cachedExp = parseInt(sessionStorage.getItem('gcrm_token_exp') || '0');
+  if (cached && Date.now() < cachedExp - 120000) {
+    _gmailToken = cached; _tokenExpiry = cachedExp;
+    return Promise.resolve(_gmailToken);
+  }
+  // If a request is already in flight, wait for it
   if (_tokenPending) return _tokenPending;
 
   _tokenPending = new Promise(function(resolve) {
@@ -751,6 +794,8 @@ function ensureGmailToken() {
         }
         _gmailToken  = resp.access_token;
         _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
+        sessionStorage.setItem('gcrm_token', _gmailToken);
+        sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
         resolve(_gmailToken);
       };
       // prompt:'' = silent consent reuse, no popup if already authorised
