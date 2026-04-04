@@ -173,6 +173,9 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
 .ph{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.2);}
 .pw{background:#f59e0b;} .pc{background:#d1d5db;}
 .act-ind{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600;}
+.c-extra{font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;}
+.c-note{color:var(--g600);font-weight:500;}
+.c-subj{color:var(--muted);font-style:italic;}
 
 /* Gmail found section */
 .gmail-found{margin-top:20px;}
@@ -711,24 +714,65 @@ function doSignOut() {
 }
 
 // ── REQUEST GMAIL TOKEN + SYNC ───────────────────────────────────────────────
+var _tokenClient = null;
+var _tokenExpiry = 0;
+
 function requestGmailAndSync() {
   if (isDemo) { showToast('Demo mode — connect real Gmail to sync'); return; }
   try {
-    var tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
-      callback: function(resp) {
-        if (resp.error) { showToast('⚠ Could not access Gmail: ' + resp.error); return; }
-        accessToken = resp.access_token;
-        showToast('✓ Gmail connected — starting scan…');
-        startBackgroundSync();
-      }
-    });
-    tokenClient.requestAccessToken({prompt: ''});
+    // If token still valid (with 2-min buffer), skip prompt and sync directly
+    if (accessToken && Date.now() < _tokenExpiry - 120000) {
+      startBackgroundSync();
+      return;
+    }
+    if (!_tokenClient) {
+      _tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
+        callback: function(resp) {
+          if (resp.error) { showToast('⚠ Could not access Gmail: ' + resp.error); return; }
+          accessToken  = resp.access_token;
+          _tokenExpiry = Date.now() + ((resp.expires_in || 3600) * 1000);
+          showToast('✓ Gmail connected — starting scan…');
+          startBackgroundSync();
+        }
+      });
+    }
+    // prompt:'' = silent if already consented, only shows popup first time
+    _tokenClient.requestAccessToken({prompt: ''});
   } catch(e) {
     showToast('⚠ Google API not ready — try again in a moment');
     console.error(e);
   }
+}
+
+// Silent token refresh — called before any Gmail API operation
+async function ensureToken() {
+  if (accessToken && Date.now() < _tokenExpiry - 120000) return true;
+  return new Promise(function(resolve) {
+    try {
+      if (!_tokenClient) {
+        _tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
+          callback: function(resp) {
+            if (resp.error) { resolve(false); return; }
+            accessToken  = resp.access_token;
+            _tokenExpiry = Date.now() + ((resp.expires_in || 3600) * 1000);
+            resolve(true);
+          }
+        });
+      } else {
+        _tokenClient.callback = function(resp) {
+          if (resp.error) { resolve(false); return; }
+          accessToken  = resp.access_token;
+          _tokenExpiry = Date.now() + ((resp.expires_in || 3600) * 1000);
+          resolve(true);
+        };
+      }
+      _tokenClient.requestAccessToken({prompt: ''});
+    } catch(e) { resolve(false); }
+  });
 }
 
 // ── FIREBASE LOAD/SAVE ────────────────────────────────────────────────────────
@@ -787,28 +831,24 @@ async function saveAllToFirebase() {
 // ── BACKGROUND GMAIL SYNC ─────────────────────────────────────────────────────
 async function startBackgroundSync() {
   if (bgSyncing || isDemo) return;
-  if (!accessToken && currentUser) {
+  if (!accessToken) {
     showToast('Sign in again to enable Gmail sync');
     return;
   }
-  if (!accessToken) return;
 
   bgSyncing = true;
   showLearning(true, 'Learning your inbox…');
 
   try {
-    var dateFrom = document.getElementById('dateFrom').value;
-    var dateTo   = document.getElementById('dateTo').value;
-    var query    = keywords.map(function(kw){ return '"'+kw+'"'; }).join(' OR ');
-    if (dateFrom) query += ' after:' + dateFrom.replace(/-/g,'/');
-    if (dateTo)   query += ' before:' + dateTo.replace(/-/g,'/');
+    // Build keyword query WITHOUT date filters — scan everything, display filtered
+    var query = keywords.map(function(kw){ return '"'+kw+'"'; }).join(' OR ');
 
     var existing   = {};
     allContacts.forEach(function(c){ existing[c.email] = c; });
     var newlyFound = {};
     var pageToken  = null;
     var processed  = 0;
-    var batchSize  = 100;
+    var batchSize  = 500; // increased from 100
 
     do {
       var url = 'https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults='+batchSize+'&q='+encodeURIComponent(query);
@@ -820,13 +860,14 @@ async function startBackgroundSync() {
       var threads = data.threads || [];
       pageToken   = data.nextPageToken || null;
 
-      for (var i=0; i<threads.length; i+=10) {
-        var batch = threads.slice(i, i+10);
+      for (var i=0; i<threads.length; i+=20) {
+        var batch = threads.slice(i, i+20);
         await Promise.all(batch.map(function(t){ return processThread(t, existing, newlyFound); }));
         processed += batch.length;
-        showLearning(true, 'Learning… ' + processed + ' threads');
+        showLearning(true, 'Scanning… ' + processed + ' threads · ' + Object.keys(newlyFound).length + ' contacts found');
       }
 
+      // Progressive render every page
       var newArr = Object.values(newlyFound);
       if (newArr.length > 0) {
         newArr.forEach(function(c) {
@@ -834,22 +875,35 @@ async function startBackgroundSync() {
             existing[c.email] = c;
             allContacts.push(c);
           } else {
-            existing[c.email]['keyword score'] = (parseInt(existing[c.email]['keyword score']||0)) + c._deltaScore;
-            existing[c.email]['email count']   = (parseInt(existing[c.email]['email count']||0))   + c._deltaCount;
+            existing[c.email]['keyword score'] = Math.max(
+              parseInt(existing[c.email]['keyword score']||0),
+              parseInt(c['keyword score']||0)
+            );
+            existing[c.email]['email count'] = Math.max(
+              parseInt(existing[c.email]['email count']||0),
+              parseInt(c['email count']||0)
+            );
+            if (c['last contact'] > (existing[c.email]['last contact']||'')) {
+              existing[c.email]['last contact'] = c['last contact'];
+              existing[c.email]['last subject'] = c['last subject'];
+            }
+            if (c['first contact'] < (existing[c.email]['first contact']||'9999')) {
+              existing[c.email]['first contact'] = c['first contact'];
+            }
           }
         });
         newlyFound = {};
         renderAll();
       }
 
-    } while (pageToken && processed < 5000);
+    } while (pageToken && processed < 20000); // increased from 5000
 
     await saveAllToFirebase();
     var now = new Date().toLocaleDateString();
     localStorage.setItem('gcrm_lastSync', now);
     document.getElementById('sSync').textContent = now;
     showLearning(false);
-    showToast('✓ Inbox scan complete — ' + allContacts.length + ' contacts');
+    showToast('✓ Inbox scan complete — ' + allContacts.length + ' contacts found');
 
     if (document.getElementById('toggleGContacts').checked) {
       await syncToGoogleContacts();
@@ -858,16 +912,18 @@ async function startBackgroundSync() {
   } catch(err) {
     showLearning(false);
     console.error('Sync error:', err);
+    showToast('⚠ Sync error — check console');
   }
   bgSyncing = false;
 }
 
 async function processThread(t, existing, newlyFound) {
   try {
-    var res  = await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/threads/'+t.id+'?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date');
+    var res  = await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/threads/'+t.id+'?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date');
     if (!res.ok) return;
     var data = await res.json();
     var msgs = data.messages || [];
+    var snippet = data.snippet || '';
 
     msgs.forEach(function(msg) {
       var from    = getHdr(msg,'From')||'';
@@ -877,16 +933,20 @@ async function processThread(t, existing, newlyFound) {
       var em = from.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
       if (!em) return;
       var email = em[0].toLowerCase();
+      // Skip own emails and spam
+      if (currentUser && email === (currentUser.email||'').toLowerCase()) return;
       if (isSpam(email)) return;
 
       var nameM = from.match(/^([^<]+)</);
       var name  = nameM ? nameM[1].trim().replace(/"/g,'') : email;
 
+      // Score on subject + snippet combined
+      var searchText = (subject + ' ' + snippet).toLowerCase();
       var score = 0;
       keywords.forEach(function(kw){
         var re = new RegExp(kw.replace(/[-\/\\^$*+?.()|[\]{}]/g,'\\$&'),'gi');
-        var m  = (subject+' ').match(re);
-        if (m) score += m.length;
+        var m  = searchText.match(re);
+        if (m) score += m.length * 2; // weight keyword hits more heavily
       });
 
       var d = date ? new Date(date) : new Date();
@@ -906,14 +966,10 @@ async function processThread(t, existing, newlyFound) {
           notes:           userNotes[email]|| (ex ? ex.notes          : '') || '',
           liUrl:           ex ? (ex.liUrl||'') : '',
           liTitle:         ex ? (ex.liTitle||'') : '',
-          _deltaScore: 0,
-          _deltaCount: 0
         };
       }
 
       var c = newlyFound[email];
-      c._deltaScore = (c._deltaScore||0) + score;
-      c._deltaCount = (c._deltaCount||0) + 1;
       c['keyword score'] += score;
       c['email count']++;
 
@@ -937,11 +993,17 @@ function onSearch() {
 }
 
 async function doGmailSearch(q) {
-  if (isDemo || !accessToken) return;
+  if (isDemo) return;
+  // Ensure we have a valid token before searching
+  if (!accessToken) {
+    var ok = await ensureToken();
+    if (!ok) return;
+  }
 
   try {
     var url  = 'https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=50&q='+encodeURIComponent(q);
     var res  = await gFetch(url);
+    if (!res.ok) return;
     var data = await res.json();
     var threads = data.threads || [];
 
@@ -949,21 +1011,26 @@ async function doGmailSearch(q) {
     var existing = {};
     allContacts.forEach(function(c){ existing[c.email]=true; });
 
-    for (var t of threads.slice(0,20)) {
-      var tr = await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/threads/'+t.id+'?format=metadata&metadataHeaders=From&metadataHeaders=Subject');
+    for (var t of threads.slice(0,30)) {
+      var tr = await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/threads/'+t.id+'?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date');
       var td = await tr.json();
       (td.messages||[]).forEach(function(msg){
         var from = getHdr(msg,'From')||'';
         var em   = from.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
         if (!em) return;
         var email = em[0].toLowerCase();
+        if (currentUser && email === (currentUser.email||'').toLowerCase()) return;
         if (isSpam(email) || existing[email]) return;
         var nameM = from.match(/^([^<]+)</);
+        var date  = getHdr(msg,'Date')||'';
+        var subj  = getHdr(msg,'Subject')||'';
         found[email] = {
           name:    nameM ? nameM[1].trim().replace(/"/g,'') : email,
           email:   email,
           company: extractCo(email),
           'keyword score': 0, 'email count': 1,
+          'last contact': date ? new Date(date).toISOString().slice(0,10) : '',
+          'last subject': subj,
           classification: '', notes: '', isNew: true
         };
       });
@@ -975,7 +1042,7 @@ async function doGmailSearch(q) {
     } else {
       hideGmailFound();
     }
-  } catch(e) { hideGmailFound(); }
+  } catch(e) { console.error('Gmail search error:', e); hideGmailFound(); }
 }
 
 function showGmailFound(arr, q) {
@@ -1123,9 +1190,16 @@ function renderContacts() {
     var avHtml = c.liPhoto
       ? '<div class="c-avatar"><img src="'+c.liPhoto+'" alt=""></div>'
       : '<div class="c-avatar" style="background:'+color+'">'+initials(name)+'</div>';
+    // Show notes preview or last subject in the whitespace
+    var extraHtml='';
+    if(c.notes && c.notes.trim()){
+      extraHtml='<div class="c-extra c-note">📝 '+esc(c.notes.substring(0,80))+(c.notes.length>80?'…':'')+'</div>';
+    } else if(c['last subject']){
+      extraHtml='<div class="c-extra c-subj">✉ '+esc(c['last subject'].substring(0,80))+(c['last subject'].length>80?'…':'')+'</div>';
+    }
     return '<div class="c-card'+(cat==='Exclude'?' excluded':'')+'" onclick="openContact('+i+')">' +
       avHtml +
-      '<div class="c-info"><div class="c-name">'+esc(name)+'</div><div class="c-email">'+esc(email)+'</div>'+(co?'<div class="c-co">'+esc(co)+'</div>':'')+(c.liTitle?'<div class="c-co" style="color:var(--g600)">'+esc(c.liTitle)+'</div>':'')+'</div>' +
+      '<div class="c-info"><div class="c-name">'+esc(name)+'</div><div class="c-email">'+esc(email)+'</div>'+(co?'<div class="c-co">'+esc(co)+'</div>':'')+(c.liTitle?'<div class="c-co" style="color:var(--g600)">'+esc(c.liTitle)+'</div>':'')+extraHtml+'</div>' +
       '<div class="c-score"><div class="sc-n">'+score+'</div><div class="sc-l">score</div></div>' +
       '<div class="c-meta"><div class="c-emails">'+count+' emails</div><div class="c-date">'+(last?last.slice(0,10):'—')+'</div>'+(aLbl?'<div class="act-ind"><div class="pulse '+pCls+'"></div>'+aLbl+'</div>':'')+'</div>' +
       catHtml+'</div>';
@@ -1260,25 +1334,30 @@ async function suggestLinkedIn(){
 
   showToast('Searching for LinkedIn profile…');
   try{
-    var prompt='Generate the most likely LinkedIn profile URL for: Name: '+c.name+', Company: '+(c.company||'unknown')+', Email: '+c.email+'. Return ONLY JSON: {url, displayName, title, confidence} where confidence is high/medium/low. No other text.';
+    var prompt='You are a professional research assistant. Based on the following contact information, generate the single most likely LinkedIn profile URL for this person. Name: '+c.name+', Company: '+(c.company||'unknown')+', Email domain: '+c.email.split('@')[1]+'. Return ONLY a JSON object with these exact keys: url (string), displayName (string), title (string), confidence (one of: high, medium, low). No markdown, no explanation, just the JSON object.';
 
     var res=await fetch(AI_PROXY_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:300,messages:[{role:'user',content:prompt}]})
     });
+    if(!res.ok){ showToast('⚠ AI proxy error: '+res.status); return; }
     var data=await res.json();
+    if(!data.content||!data.content[0]){ showToast('⚠ No response from AI'); return; }
     var txt=data.content[0].text.replace(/```json|```/g,'').trim();
-    var info=JSON.parse(txt);
+    // Extract JSON object from response
+    var jsonMatch=txt.match(/\{[\s\S]*\}/);
+    if(!jsonMatch){ showToast('⚠ Could not parse AI response'); return; }
+    var info=JSON.parse(jsonMatch[0]);
     _liSuggestion=info;
 
     document.getElementById('liSuggestName').textContent=info.displayName||c.name;
-    document.getElementById('liSuggestTitle').textContent=(info.title||'')+(info.confidence?'  ·  '+info.confidence+' confidence match':'');
+    document.getElementById('liSuggestTitle').textContent=(info.title||'')+(info.confidence?'  ·  '+info.confidence+' confidence':'');
     document.getElementById('liSuggestUrl').textContent=info.url||'';
     document.getElementById('liSuggestUrl').href=info.url||'#';
     document.getElementById('liSuggestBox').style.display='block';
-    showToast('LinkedIn profile suggested — please confirm');
-  } catch(e){ showToast('Could not suggest profile — check connection'); }
+    showToast('✓ LinkedIn profile suggested — please verify before confirming');
+  } catch(e){ console.error('LinkedIn suggest error:',e); showToast('Could not suggest profile — try pasting URL manually'); }
 }
 
 async function confirmLinkedIn(){
@@ -1348,53 +1427,79 @@ async function generateReconnect(){
 
   var sig=signature||localStorage.getItem('gcrm_sig')||'';
 
+  // Build email context from Gmail — ensure token first
   var emailContext='Last known email subject: '+(c['last subject']||'unknown');
-  if(accessToken && !isDemo){
-    try{
-      var res=await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=3&q=from:'+encodeURIComponent(c.email)+' OR to:'+encodeURIComponent(c.email));
-      var data=await res.json();
-      var msgs=data.messages||[];
-      var snippets=[];
-      for(var m of msgs){
-        var mr=await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+m.id+'?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date');
-        var md=await mr.json();
-        var subj=getHdr(md,'Subject')||'';
-        var snip=md.snippet||'';
-        snippets.push('Subject: '+subj+'\nSnippet: '+snip.substring(0,200));
-      }
-      if(snippets.length>0) emailContext='Recent email history:\n'+snippets.join('\n---\n');
-    } catch(e){ /* use fallback */ }
+  var gotRealEmails = false;
+
+  if(!isDemo){
+    var tokenOk = accessToken ? true : await ensureToken();
+    if(tokenOk){
+      try{
+        // Search both sent AND received with this contact
+        var searchQ = 'from:'+c.email+' OR to:'+c.email;
+        var res=await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5&q='+encodeURIComponent(searchQ));
+        var data=await res.json();
+        var msgs=data.messages||[];
+        var snippets=[];
+        for(var m of msgs.slice(0,5)){
+          var mr=await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+m.id+'?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date');
+          var md=await mr.json();
+          var subj=getHdr(md,'Subject')||'(no subject)';
+          var from=getHdr(md,'From')||'';
+          var date=getHdr(md,'Date')||'';
+          var snip=(md.snippet||'').substring(0,300);
+          var direction=from.toLowerCase().indexOf(c.email.toLowerCase())>-1?'They wrote':'You wrote';
+          var dateStr=date?new Date(date).toLocaleDateString():'';
+          snippets.push(direction+' ('+dateStr+'): "'+subj+'"\n'+snip);
+        }
+        if(snippets.length>0){
+          emailContext='Last '+snippets.length+' emails with this contact:\n\n'+snippets.join('\n\n---\n\n');
+          gotRealEmails=true;
+        }
+      } catch(e){ console.error('Email fetch error:',e); }
+    }
   }
 
-  var prompt='You are writing reconnect emails on behalf of someone using GCRM.\n\n'+
+  var prompt='You are writing reconnect emails on behalf of a professional.\n\n'+
     'Contact name: '+c.name+'\n'+
     'Company: '+(c.company||'unknown')+'\n'+
     'Job title: '+(c.liTitle||'unknown')+'\n'+
+    'Category: '+(c.classification||'contact')+'\n'+
     'Last contact date: '+(c['last contact']||'unknown')+'\n'+
-    'Keyword score: '+(c['keyword score']||0)+' (topics: '+keywords.join(', ')+')\n'+
-    'Category: '+(c.classification||'uncategorized')+'\n\n'+
+    'Keyword score: '+(c['keyword score']||0)+' (shared topics: '+keywords.join(', ')+')\n\n'+
     emailContext+'\n\n'+
-    'Signature to append:\n'+(sig||'[Your signature]')+'\n\n'+
-    'Write exactly 3 short reconnect email options. Each 3-5 sentences max. Append the signature to each. Format as JSON array with objects: {label, subject, body}. Labels: "Formal","Friendly","Brief". Make them genuinely personal based on the email history. Return ONLY valid JSON.';
+    'Sender signature:\n'+(sig||'[Your name]')+'\n\n'+
+    'Write exactly 3 reconnect email options tailored to the ACTUAL email history above — reference specific topics from the snippets where possible. Each email should be 3-5 sentences. Always append the full signature. Format ONLY as a JSON array: [{label, subject, body}]. Labels must be: "Formal", "Friendly", "Brief". Return ONLY valid JSON, no explanation.';
 
   try{
     var res=await fetch(AI_PROXY_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1000,messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1500,messages:[{role:'user',content:prompt}]})
     });
     var data=await res.json();
+    if(!data.content||!data.content[0]) throw new Error('No response');
     var txt=data.content[0].text.replace(/```json|```/g,'').trim();
-    var opts=JSON.parse(txt);
+    // Find the JSON array in the response
+    var jsonMatch=txt.match(/\[[\s\S]*\]/);
+    if(!jsonMatch) throw new Error('No JSON found');
+    var opts=JSON.parse(jsonMatch[0]);
     renderReconnect(opts);
   } catch(e){
-    // Fallback without AI
+    console.error('Reconnect error:',e);
+    // Meaningful fallback using actual contact data
+    var firstName=(c.name||'there').split(' ')[0];
+    var topic=c['last subject']||keywords[0]||'your work together';
     var fallbacks=[
-      {label:'Formal',  subject:'Following up — '+keywords[0],body:'Dear '+(c.name||'there')+',\n\nI hope this finds you well. I wanted to reach out and reconnect regarding our previous discussions around '+keywords[0]+'. I\'d love to explore whether there are opportunities to collaborate.\n\nWould you be available for a brief call?\n\n'+sig},
-      {label:'Friendly',subject:'Checking in!',body:'Hi '+((c.name||'').split(' ')[0]||'there')+',\n\nIt\'s been a while — hope things are going well on your end! I was thinking about our work together around '+keywords[0]+' and wanted to check in.\n\nUp for a quick catch-up?\n\n'+sig},
-      {label:'Brief',   subject:'Quick hello',body:'Hi '+((c.name||'').split(' ')[0]||'there')+',\n\nHope you\'re doing well. Wanted to touch base and see if there\'s anything we can help with.\n\nOpen for a call?\n\n'+sig}
+      {label:'Formal',  subject:'Following up — '+keywords[0],
+       body:'Dear '+c.name+',\n\nI hope this message finds you well. I was recently reviewing our previous correspondence around '+topic+' and wanted to reach out to reconnect.\n\nI\'d love to explore whether there are any opportunities to collaborate further. Would you be available for a brief call in the coming weeks?\n\n'+sig},
+      {label:'Friendly',subject:'Hey '+firstName+' — checking in',
+       body:'Hi '+firstName+',\n\nIt\'s been a while since we last connected! I was thinking about our work together on '+topic+' and wanted to check in to see how things are going on your end.\n\nWould love to catch up — are you free for a quick call?\n\n'+sig},
+      {label:'Brief',   subject:'Quick hello from Rob',
+       body:'Hi '+firstName+',\n\nHope you\'re doing well! Wanted to touch base and see if there\'s anything we can help with on the '+keywords[0]+' front.\n\nOpen to a quick chat?\n\n'+sig}
     ];
     renderReconnect(fallbacks);
+    if(!gotRealEmails) showToast('Using template — click ⟳ Sync Gmail for personalised emails');
   }
 }
 
