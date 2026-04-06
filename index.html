@@ -361,6 +361,7 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
       <span id="uName">User</span>
     </div>
     <button class="hdr-btn hdr-primary" onclick="requestGmailAndSync()">⟳ Sync Gmail</button>
+    <button class="hdr-btn hdr-ghost" onclick="forceFullRescan()" title="Clear sync history and rescan everything from scratch">↺ Full Rescan</button>
     <button class="hdr-btn hdr-ghost" onclick="openModal('settingsModal')">⚙ Settings</button>
     <button class="hdr-btn hdr-ghost" onclick="openExport()">↓ Export</button>
     <button class="hdr-btn hdr-ghost" onclick="doSignOut()">Sign out</button>
@@ -828,6 +829,15 @@ async function gFetch(url, opts) {
   return resp;
 }
 
+// forceFullRescan — clears incremental sync date and rescans everything
+function forceFullRescan() {
+  if (!confirm('This will rescan your entire Gmail history from scratch. It may take several minutes. Continue?')) return;
+  localStorage.removeItem('gcrm_lastSyncDate');
+  localStorage.removeItem('gcrm_lastSync');
+  showToast('Full rescan starting — scanning all emails…');
+  requestGmailAndSync();
+}
+
 // requestGmailAndSync — called by the ⟳ Sync button
 function requestGmailAndSync() {
   if (isDemo) { showToast('Demo mode — connect real Gmail to sync'); return; }
@@ -918,9 +928,21 @@ async function startBackgroundSync() {
     }
 
     // Build query from keywords, or scan everything if none set
-    var query = keywords.length > 0
+    var kwQuery = keywords.length > 0
       ? keywords.map(function(kw) { return '"' + kw + '"'; }).join(' OR ')
-      : 'has:attachment OR from:me'; // fallback: broad scan
+      : ''; // empty = all mail
+
+    // Incremental sync — only fetch emails newer than last sync
+    // On first ever sync, scan everything. After that, only new mail.
+    var lastSyncDate = localStorage.getItem('gcrm_lastSyncDate') || '';
+    var isFirstSync  = !lastSyncDate;
+    var query = kwQuery;
+    if (!isFirstSync) {
+      // Add after: filter so we only scan new emails
+      query = (kwQuery ? kwQuery + ' ' : '') + 'after:' + lastSyncDate;
+    }
+    // If no query at all, Gmail requires something — use wildcard
+    if (!query.trim()) query = 'in:all';
 
     // Build a lookup map from existing contacts for fast merge
     var contactMap = {};
@@ -989,13 +1011,25 @@ async function startBackgroundSync() {
       // Render after each page so user sees live updates
       renderAll();
 
-    } while (pageToken && totalScanned < 25000);
+    } while (pageToken); // No limit — scan ALL threads, save progress as we go
+
+    // Save the last page token so next sync can resume if interrupted
+    if (!pageToken) {
+      localStorage.removeItem('gcrm_resumeToken');
+    }
 
     // Final save and wrap-up
     await saveAllToFirebase();
-    var now = new Date().toLocaleDateString();
-    localStorage.setItem('gcrm_lastSync', now);
-    document.getElementById('sSync').textContent = now;
+    var now = new Date();
+    var nowStr = now.toLocaleDateString();
+    // Save sync date in Gmail format (yyyy/mm/dd) for incremental sync
+    var gmailDateStr = now.getFullYear() + '/'
+      + String(now.getMonth()+1).padStart(2,'0') + '/'
+      + String(now.getDate()).padStart(2,'0');
+    localStorage.setItem('gcrm_lastSync', nowStr);
+    localStorage.setItem('gcrm_lastSyncDate', gmailDateStr);
+    document.getElementById('sSync').textContent = nowStr
+      + (isFirstSync ? ' (full scan)' : ' (incremental)');
     showLearning(false);
     renderAll();
     showToast('✓ Done — ' + allContacts.length + ' contacts from ' + totalScanned + ' threads');
@@ -1859,6 +1893,15 @@ async function importSignatureFromGmail() {
         sig=nonEmpty.slice(-6).join('\n').trim();
       }
       if(sig&&sig.length>10){
+        // Clean up email quote markers (> at line start) and extra whitespace
+        sig = sig.split('\n')
+          .map(function(l){ return l.replace(/^[>\s]+/, '').trimEnd(); })
+          .filter(function(l,i,arr){
+            // Remove consecutive blank lines
+            return !(l==='' && arr[i-1]==='');
+          })
+          .join('\n')
+          .trim();
         document.getElementById('sigArea').value=sig;
         showToast('✓ Signature imported — click Save Settings to apply');
         return;
