@@ -176,6 +176,10 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
 .c-extra{font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;}
 .c-note{color:var(--g600);font-weight:500;}
 .c-subj{color:var(--muted);font-style:italic;}
+.c-kw-pills{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;}
+.c-kw-pill{padding:1px 7px;background:var(--g100);color:var(--g700);border-radius:100px;font-size:10px;font-weight:600;}
+.c-avatar-logo{width:42px;height:42px;border-radius:11px;overflow:hidden;background:#f8f8f8;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.c-avatar-logo img{width:100%;height:100%;object-fit:contain;padding:4px;}
 
 /* Gmail found section */
 .gmail-found{margin-top:20px;}
@@ -360,8 +364,11 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
       <div class="u-avatar" id="uAvatar">?</div>
       <span id="uName">User</span>
     </div>
+    <select class="flt" id="hdrCatFilter" onchange="onHdrCatFilter()" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);border-color:rgba(255,255,255,.15);font-size:12px;padding:5px 10px;border-radius:8px;" title="Filter by category">
+      <option value="">All Categories</option>
+    </select>
     <button class="hdr-btn hdr-primary" onclick="requestGmailAndSync()">⟳ Sync Gmail</button>
-    <button class="hdr-btn hdr-ghost" onclick="forceFullRescan()" title="Clear sync history and rescan everything from scratch">↺ Full Rescan</button>
+    <button class="hdr-btn hdr-ghost" onclick="forceFullRescan()" title="Rescan entire Gmail history">↺ Full Rescan</button>
     <button class="hdr-btn hdr-ghost" onclick="openModal('settingsModal')">⚙ Settings</button>
     <button class="hdr-btn hdr-ghost" onclick="openExport()">↓ Export</button>
     <button class="hdr-btn hdr-ghost" onclick="doSignOut()">Sign out</button>
@@ -473,23 +480,11 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
         <div class="sec-lbl">Notes</div>
         <textarea class="notes-fld" id="mNotes" placeholder="Add notes about this contact…"></textarea>
         <div class="sec-lbl">LinkedIn</div>
-        <div id="liSuggestBox" style="display:none;margin-bottom:12px;border:1.5px solid var(--g200);border-radius:var(--r);overflow:hidden">
-          <div style="background:var(--g50);padding:10px 14px;border-bottom:1px solid var(--g200)">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--g500);margin-bottom:6px">🔍 Suggested LinkedIn Match</div>
-            <div id="liSuggestName" style="font-size:14px;font-weight:600;color:var(--ink)"></div>
-            <div id="liSuggestTitle" style="font-size:12px;color:var(--muted);margin-top:2px"></div>
-            <a id="liSuggestUrl" href="#" target="_blank" style="font-size:11px;color:var(--g500);display:block;margin-top:4px"></a>
-          </div>
-          <div style="display:flex;gap:0;border-top:1px solid var(--g200)">
-            <button onclick="confirmLinkedIn()" style="flex:1;padding:9px;background:var(--g600);color:#fff;border:none;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">✓ Yes, that&#39;s them</button>
-            <button onclick="dismissLinkedIn()" style="flex:1;padding:9px;background:#fff;color:var(--muted);border:none;border-left:1px solid var(--g200);font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">✗ Not them</button>
-          </div>
-        </div>
+        <!-- LinkedIn suggestion removed - use manual URL paste below -->
         <div id="liManualBox" style="margin-bottom:12px">
           <input type="text" class="mini-inp" id="mLIUrl" placeholder="https://linkedin.com/in/..." style="margin-bottom:8px">
           <div style="display:flex;gap:8px">
-            <button class="btn-save" style="font-size:12px;padding:6px 14px;flex:1" onclick="suggestLinkedIn()">🔍 Find LinkedIn Profile</button>
-            <button class="btn-copy" style="font-size:12px;padding:6px 14px;flex:1" onclick="enrichLinkedIn()">✦ Enrich from URL</button>
+            <button class="btn-copy" style="font-size:12px;padding:6px 14px;flex:1" onclick="enrichLinkedIn()">✦ Save LinkedIn URL</button>
           </div>
         </div>
       </div>
@@ -834,15 +829,89 @@ function forceFullRescan() {
   if (!confirm('This will rescan your entire Gmail history from scratch. It may take several minutes. Continue?')) return;
   localStorage.removeItem('gcrm_lastSyncDate');
   localStorage.removeItem('gcrm_lastSync');
-  showToast('Full rescan starting — scanning all emails…');
-  requestGmailAndSync();
+  // Clear cached token to force fresh Gmail consent
+  _gmailToken = null; _tokenExpiry = 0; _tokenPending = null;
+  sessionStorage.removeItem('gcrm_token');
+  sessionStorage.removeItem('gcrm_token_exp');
+  showToast('Please grant Gmail access in the popup…');
+  // Force explicit consent popup so user grants Gmail scope
+  if (!_tokenClient) {
+    _tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
+      callback: function(resp) {
+        _tokenPending = null;
+        if (resp.error || !resp.access_token) {
+          showToast('⚠ Gmail access needed to sync'); return;
+        }
+        _gmailToken  = resp.access_token;
+        _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
+        sessionStorage.setItem('gcrm_token', _gmailToken);
+        sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
+        showToast('✓ Gmail connected — starting full scan…');
+        startBackgroundSync();
+      }
+    });
+  } else {
+    _tokenClient.callback = function(resp) {
+      _tokenPending = null;
+      if (resp.error || !resp.access_token) {
+        showToast('⚠ Gmail access needed to sync'); return;
+      }
+      _gmailToken  = resp.access_token;
+      _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
+      sessionStorage.setItem('gcrm_token', _gmailToken);
+      sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
+      showToast('✓ Gmail connected — starting full scan…');
+      startBackgroundSync();
+    };
+  }
+  _tokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
 // requestGmailAndSync — called by the ⟳ Sync button
 function requestGmailAndSync() {
   if (isDemo) { showToast('Demo mode — connect real Gmail to sync'); return; }
   if (bgSyncing) { showToast('Sync already running…'); return; }
-  startBackgroundSync();
+  // If we have a valid cached token, sync immediately
+  var cached    = sessionStorage.getItem('gcrm_token');
+  var cachedExp = parseInt(sessionStorage.getItem('gcrm_token_exp') || '0');
+  if (cached && Date.now() < cachedExp - 120000) {
+    _gmailToken = cached; _tokenExpiry = cachedExp;
+    startBackgroundSync();
+    return;
+  }
+  // No valid token — request one silently first, fall back to prompt
+  if (!_tokenClient) {
+    _tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
+      callback: function(resp) {
+        _tokenPending = null;
+        if (resp.error || !resp.access_token) {
+          showToast('⚠ Gmail access needed — try Full Rescan'); return;
+        }
+        _gmailToken  = resp.access_token;
+        _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
+        sessionStorage.setItem('gcrm_token', _gmailToken);
+        sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
+        startBackgroundSync();
+      }
+    });
+  } else {
+    _tokenClient.callback = function(resp) {
+      _tokenPending = null;
+      if (resp.error || !resp.access_token) {
+        showToast('⚠ Gmail access needed — try Full Rescan'); return;
+      }
+      _gmailToken  = resp.access_token;
+      _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
+      sessionStorage.setItem('gcrm_token', _gmailToken);
+      sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
+      startBackgroundSync();
+    };
+  }
+  _tokenClient.requestAccessToken({ prompt: '' });
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1311,10 +1380,12 @@ function sortBy(mode, btn) {
 }
 
 function doSort(skipUI) {
+  // No keywords active = always sort by most recent regardless of sort mode
+  var effectiveMode = keywords.length === 0 ? 'recent' : sortMode;
   filtered.sort(function(a, b) {
-    if (sortMode === 'score')  return parseInt(b['keyword score']||0) - parseInt(a['keyword score']||0);
-    if (sortMode === 'recent') return (b['last contact']||'') > (a['last contact']||'') ? 1 : -1;
-    if (sortMode === 'emails') return parseInt(b['email count']||0)   - parseInt(a['email count']||0);
+    if (effectiveMode === 'score')  return parseInt(b['keyword score']||0) - parseInt(a['keyword score']||0);
+    if (effectiveMode === 'recent') return (b['last contact']||'') > (a['last contact']||'') ? 1 : -1;
+    if (effectiveMode === 'emails') return parseInt(b['email count']||0)   - parseInt(a['email count']||0);
     return 0;
   });
   renderContacts();
@@ -1335,6 +1406,7 @@ function initials(name) {
 function renderContacts() {
   var grid  = document.getElementById('cGrid');
   var state = document.getElementById('stateBox');
+  var hasKw = keywords.length > 0;
 
   if (allContacts.length === 0) {
     state.style.display = 'flex'; grid.innerHTML = '';
@@ -1369,16 +1441,49 @@ function renderContacts() {
     var catHtml = cat
       ? '<span class="cat-pill '+(catInfo?catInfo.cls:'p-none')+'" style="'+(catInfo?'background:'+catInfo.bg+';color:'+catInfo.color:'')+'">' + esc(cat) + '</span>'
       : '<span class="cat-pill p-none">—</span>';
-    var avHtml = c.liPhoto
-      ? '<div class="c-avatar"><img src="'+c.liPhoto+'" alt=""></div>'
-      : '<div class="c-avatar" style="background:'+avatarColor(email)+'">'+initials(name)+'</div>';
+
+    // Company logo via Clearbit, fallback to initials
+    var domain = email.split('@')[1] || '';
+    var avHtml;
+    if (c.liPhoto) {
+      avHtml = '<div class="c-avatar"><img src="'+c.liPhoto+'" alt=""></div>';
+    } else if (domain && !PERSONAL_DOMAINS.includes(domain)) {
+      avHtml = '<div class="c-avatar-logo">'
+        + '<img src="https://logo.clearbit.com/'+domain+'" alt="" '
+        + 'onerror="this.parentElement.outerHTML='<div class=\"c-avatar\" style=\"background:'+avatarColor(email)+'\">'+initials(name)+'</div>'">'
+        + '</div>';
+    } else {
+      avHtml = '<div class="c-avatar" style="background:'+avatarColor(email)+'">'+initials(name)+'</div>';
+    }
+
+    // Keyword pills — which keywords matched this contact
+    var kwPills = '';
+    if (hasKw && score > 0) {
+      var matchedKws = keywords.filter(function(kw) {
+        var subj = (c['last subject'] || '').toLowerCase();
+        return subj.includes(kw.toLowerCase());
+      });
+      if (matchedKws.length > 0) {
+        kwPills = '<div class="c-kw-pills">'
+          + matchedKws.slice(0,3).map(function(kw){ return '<span class="c-kw-pill">'+esc(kw)+'</span>'; }).join('')
+          + '</div>';
+      }
+    }
+
     // Notes preview OR last subject in the whitespace
     var extraLine = '';
     if (c.notes && c.notes.trim()) {
-      extraLine = '<div class="c-extra c-note">📝 ' + esc(c.notes.substring(0,90)) + (c.notes.length>90?'…':'') + '</div>';
-    } else if (c['last subject']) {
-      extraLine = '<div class="c-extra c-subj">✉ ' + esc(c['last subject'].substring(0,90)) + (c['last subject'].length>90?'…':'') + '</div>';
+      extraLine = '<div class="c-extra c-note">📝 ' + esc(c.notes.substring(0,80)) + (c.notes.length>80?'…':'') + '</div>';
+    } else if (!hasKw && c['last subject']) {
+      // No keywords? Show last subject instead of empty space
+      extraLine = '<div class="c-extra c-subj">✉ ' + esc(c['last subject'].substring(0,80)) + (c['last subject'].length>80?'…':'') + '</div>';
     }
+
+    // Score column: hide score number when no keywords active
+    var scoreHtml = hasKw
+      ? '<div class="c-score"><div class="sc-n">' + score + '</div><div class="sc-l">score</div></div>'
+      : '<div class="c-score"><div class="sc-n" style="font-size:11px;color:var(--sage)">—</div><div class="sc-l">score</div></div>';
+
     return '<div class="c-card' + (cat==='Exclude'?' excluded':'') + '" onclick="openContact('+i+')">'
       + avHtml
       + '<div class="c-info">'
@@ -1387,8 +1492,9 @@ function renderContacts() {
         + (co ? '<div class="c-co">' + esc(co) + '</div>' : '')
         + (c.liTitle ? '<div class="c-co" style="color:var(--g600)">' + esc(c.liTitle) + '</div>' : '')
         + extraLine
+        + kwPills
       + '</div>'
-      + '<div class="c-score"><div class="sc-n">' + score + '</div><div class="sc-l">score</div></div>'
+      + scoreHtml
       + '<div class="c-meta">'
         + '<div class="c-emails">' + count + ' emails</div>'
         + '<div class="c-date">' + (last ? last.slice(0,10) : '—') + '</div>'
@@ -1586,31 +1692,16 @@ function dismissLinkedIn() {
 
 async function enrichLinkedIn() {
   if (!activeContact) return;
-  var c = activeContact;
   var liUrl = document.getElementById('mLIUrl').value.trim();
-  showToast('⏳ Enriching contact info…');
-  try {
-    var prompt = 'Professional research task. Based on name and company, provide likely job information.\n'
-      + 'Name: ' + c.name + '\nCompany: ' + (c.company||'unknown') + '\nLinkedIn: ' + (liUrl||'unknown') + '\n\n'
-      + 'Respond ONLY with this JSON (no markdown):\n'
-      + '{"title":"job title","location":"city, country","summary":"2 sentence professional summary"}';
-    var res = await fetch(AI_PROXY_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:250, messages:[{role:'user',content:prompt}] })
-    });
-    if (!res.ok) return;
-    var data = await res.json();
-    var raw  = (data.content && data.content[0] ? data.content[0].text : '').trim();
-    var jm   = raw.match(/\{[\s\S]*?\}/);
-    if (!jm) return;
-    var info = JSON.parse(jm[0]);
-    if (info.title)   { activeContact.liTitle = info.title; document.getElementById('mCo').textContent = (c.company||'') + ' · ' + info.title; }
-    if (info.summary) { activeContact['ai summary'] = info.summary; document.getElementById('mAiTxt').textContent = info.summary; document.getElementById('mAiBox').style.display='block'; }
-    if (liUrl) activeContact.liUrl = liUrl;
-    await saveContactToFirebase(activeContact);
-    renderAll();
-    showToast('✓ Contact enriched');
-  } catch(e) { console.error('Enrich error:', e); }
+  if (!liUrl) { showToast('Paste a LinkedIn URL first'); return; }
+  activeContact.liUrl = liUrl;
+  var liLink = document.getElementById('mLI');
+  liLink.href = liUrl; liLink.style.display = 'inline-flex';
+  var master = allContacts.find(function(x) { return x.email === activeContact.email; });
+  if (master) master.liUrl = liUrl;
+  await saveContactToFirebase(activeContact);
+  renderAll();
+  showToast('✓ LinkedIn URL saved');
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1803,8 +1894,17 @@ function saveCats() {
   closeModal('catEditorModal'); showToast('✓ Categories saved');
 }
 function populateCatFilter() {
-  var sel=document.getElementById('filterCat');
-  sel.innerHTML='<option value="">All Categories</option>'+cats.map(function(c){return '<option>'+esc(c.name)+'</option>';}).join('');
+  var opts = '<option value="">All Categories</option>' + cats.map(function(c){return '<option>'+esc(c.name)+'</option>';}).join('');
+  document.getElementById('filterCat').innerHTML = opts;
+  // Also populate header filter
+  var hdrSel = document.getElementById('hdrCatFilter');
+  if (hdrSel) hdrSel.innerHTML = opts;
+}
+
+function onHdrCatFilter() {
+  var val = document.getElementById('hdrCatFilter').value;
+  document.getElementById('filterCat').value = val;
+  filterLocal();
 }
 
 // ════════════════════════════════════════════════════════════════════
