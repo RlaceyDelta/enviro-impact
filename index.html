@@ -844,7 +844,12 @@ function getGmailTokenThenSync(fullRescan) {
   if (cached && Date.now() < cachedExp - 120000) {
     _gmailToken  = cached;
     _tokenExpiry = cachedExp;
-    showToast(fullRescan ? 'Starting full rescan…' : 'Syncing Gmail…');
+    if (fullRescan) {
+      showToast('↺ Full Rescan started — this will take a few minutes…');
+    } else {
+      var lastSync = localStorage.getItem('gcrm_lastSync') || 'never';
+      showToast('⟳ Syncing new emails since ' + lastSync + '…');
+    }
     startBackgroundSync();
     return;
   }
@@ -980,13 +985,17 @@ async function startBackgroundSync() {
     // If no query at all, Gmail requires something — use wildcard
     if (!query.trim()) query = 'in:all';
 
-    // Build lookup map — but ZERO OUT all scores before recalculating
-    // This ensures Joana and others don't carry forward fake stale scores
+    // Build lookup map
+    // Full Rescan: zero scores so they rebuild from scratch
+    // Incremental sync: keep existing scores, accumulate new points
     var contactMap = {};
     allContacts.forEach(function(c) {
       contactMap[c.email] = c;
-      c['keyword score'] = 0;  // reset score — will be recalculated fresh
-      c['email count']   = 0;  // reset email count too
+      if (isFirstSync) {
+        // Only zero on full rescan — cumulative scoring on incremental
+        c['keyword score'] = 0;
+        c['email count']   = 0;
+      }
     });
 
     var pageToken = null;
@@ -1013,8 +1022,8 @@ async function startBackgroundSync() {
       pageToken    = listData.nextPageToken || null;
 
       // Process threads in parallel chunks of 20
-      for (var i = 0; i < threads.length; i += 20) {
-        var chunk = threads.slice(i, i + 20);
+      for (var i = 0; i < threads.length; i += 5) {
+        var chunk = threads.slice(i, i + 5);  // 5 parallel max — prevents browser bog-down
         var results = await Promise.all(
           chunk.map(function(t) { return fetchThreadContacts(t.id); })
         );
@@ -1049,8 +1058,8 @@ async function startBackgroundSync() {
         );
       }
 
-      // Render after each page so user sees live updates
-      renderAll();
+      // Render every 5 pages to avoid bogging browser with constant DOM updates
+      if (totalScanned % 500 === 0 || !pageToken) renderAll();
 
     } while (pageToken); // No limit — scan ALL threads, save progress as we go
 
@@ -1822,23 +1831,6 @@ function renderKeywords() {
     return '<span class="kw-tag active">'+esc(kw)+'<button class="kw-rm" onclick="rmKw('+i+',event)">×</button></span>';
   }).join('');
 }
-// autoResync — triggered automatically when keywords change
-// Uses cached token if available (no popup), otherwise skips silently
-function autoResync() {
-  if (bgSyncing) return;
-  // Keywords changed = must rescan everything so new keyword scores all history
-  localStorage.removeItem('gcrm_lastSyncDate');
-  var cached    = sessionStorage.getItem('gcrm_token');
-  var cachedExp = parseInt(sessionStorage.getItem('gcrm_token_exp') || '0');
-  if (cached && Date.now() < cachedExp - 120000) {
-    _gmailToken  = cached;
-    _tokenExpiry = cachedExp;
-    startBackgroundSync();
-  } else {
-    showToast('Keyword updated — click ⟳ Sync Gmail to apply');
-  }
-}
-
 function confirmKw() {
   var val=document.getElementById('kwInput').value.trim().toLowerCase();
   if(val && !keywords.includes(val)){
@@ -1846,8 +1838,7 @@ function confirmKw() {
     localStorage.setItem('gcrm_kw',JSON.stringify(keywords));
     renderKeywords();
     closeModal('kwModal');
-    showToast('✓ Keyword "'+val+'" added — resyncing…');
-    autoResync();
+    showToast('✓ Keyword "'+val+'" added — click ↺ Full Rescan to apply to all history');
   } else {
     closeModal('kwModal');
   }
@@ -1858,8 +1849,7 @@ function rmKw(i,e){
   keywords.splice(i,1);
   localStorage.setItem('gcrm_kw',JSON.stringify(keywords));
   renderKeywords();
-  showToast('✓ Keyword "'+removed+'" removed — resyncing…');
-  autoResync();
+  showToast('✓ Keyword "'+removed+'" removed — click ↺ Full Rescan to apply');
 }
 
 function setPreset(p,el) {
