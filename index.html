@@ -1145,15 +1145,14 @@ async function fetchThreadContacts(threadId) {
       var nameMatch = from.match(/^"?([^"<]+)"?\s*</);
       var name = nameMatch ? nameMatch[1].trim() : email.split('@')[0];
 
-      // Score: keyword matches in subject (weight 3) + snippet (weight 1)
-      var subjectLower = subject.toLowerCase();
+      // Score: 1 point per keyword mention per email (subject + snippet combined)
+      // Multiple keywords each contribute their own points to one total score
+      var searchText = (subject + ' ' + snippet).toLowerCase();
       var score = 0;
       keywords.forEach(function(kw) {
         var re = new RegExp(kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
-        var sm = subjectLower.match(re);
-        var pm = snippet.match(re);
-        if (sm) score += sm.length * 3;
-        if (pm) score += pm.length * 1;
+        var matches = searchText.match(re);
+        if (matches) score += matches.length; // 1 point per mention
       });
 
       var d    = date ? new Date(date) : new Date();
