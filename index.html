@@ -1136,7 +1136,7 @@ async function fetchThreadContacts(threadId) {
           email:            email,
           company:          extractCo(email),
           'keyword score':  score,
-          'email count':    1,
+          'email count':    1, // 1 per thread, not per message
           'first contact':  dStr,
           'last contact':   dStr,
           'last subject':   subject,
@@ -1146,8 +1146,9 @@ async function fetchThreadContacts(threadId) {
           liTitle:          '',
         };
       } else {
+        // Same thread, same contact — accumulate score but DON'T increment count
+        // email count = number of threads, not number of messages within threads
         found[email]['keyword score'] += score;
-        found[email]['email count']++;
         if (dStr < found[email]['first contact']) found[email]['first contact'] = dStr;
         if (dStr > found[email]['last contact'])  { found[email]['last contact'] = dStr; found[email]['last subject'] = subject; }
       }
@@ -1413,15 +1414,10 @@ function renderContacts() {
       ? '<span class="cat-pill '+(catInfo?catInfo.cls:'p-none')+'" style="'+(catInfo?'background:'+catInfo.bg+';color:'+catInfo.color:'')+'">' + esc(cat) + '</span>'
       : '<span class="cat-pill p-none">—</span>';
 
-    // Company logo via Clearbit, fallback to initials
-    var domain = email.split('@')[1] || '';
+    // Avatar: photo if available, otherwise colored initials
     var avHtml;
     if (c.liPhoto) {
       avHtml = '<div class="c-avatar"><img src="'+c.liPhoto+'" alt=""></div>';
-    } else if (domain && !PERSONAL_DOMAINS.includes(domain)) {
-      avHtml = '<div class="c-avatar-logo" data-fb="'+avatarColor(email)+'" data-ini="'+initials(name)+'">'
-        + '<img src="https://www.google.com/s2/favicons?domain='+domain+'&sz=64" alt="" onError="logoFallback(this)">'
-        + '</div>';
     } else {
       avHtml = '<div class="c-avatar" style="background:'+avatarColor(email)+'">'+initials(name)+'</div>';
     }
