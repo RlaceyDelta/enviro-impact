@@ -825,94 +825,53 @@ async function gFetch(url, opts) {
 }
 
 // forceFullRescan — clears incremental sync date and rescans everything
-function forceFullRescan() {
-  if (!confirm('This will rescan your entire Gmail history from scratch. It may take several minutes. Continue?')) return;
-  localStorage.removeItem('gcrm_lastSyncDate');
-  localStorage.removeItem('gcrm_lastSync');
-  // Clear cached token to force fresh Gmail consent
-  _gmailToken = null; _tokenExpiry = 0; _tokenPending = null;
-  sessionStorage.removeItem('gcrm_token');
-  sessionStorage.removeItem('gcrm_token_exp');
-  showToast('Please grant Gmail access in the popup…');
-  // Force explicit consent popup so user grants Gmail scope
+// getGmailTokenThenSync — single function used by BOTH buttons
+// Always shows consent popup to guarantee a fresh Gmail token
+// prompt:'select_account' = user picks account, no silent fail
+function getGmailTokenThenSync(fullRescan) {
+  if (isDemo) { showToast('Demo mode — connect real Gmail to sync'); return; }
+  if (bgSyncing) { showToast('Sync already running…'); return; }
+
+  if (fullRescan) {
+    if (!confirm('This will rescan your entire Gmail history from scratch. It may take several minutes. Continue?')) return;
+    localStorage.removeItem('gcrm_lastSyncDate');
+    localStorage.removeItem('gcrm_lastSync');
+    _gmailToken = null; _tokenExpiry = 0;
+    sessionStorage.removeItem('gcrm_token');
+    sessionStorage.removeItem('gcrm_token_exp');
+  }
+
+  // Reuse or create token client
+  var onToken = function(resp) {
+    if (resp.error || !resp.access_token) {
+      showToast('⚠ Gmail access denied — please try again');
+      return;
+    }
+    _gmailToken  = resp.access_token;
+    _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
+    sessionStorage.setItem('gcrm_token', _gmailToken);
+    sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
+    showToast('✓ Gmail connected — scanning…');
+    startBackgroundSync();
+  };
+
   if (!_tokenClient) {
     _tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
-      callback: function(resp) {
-        _tokenPending = null;
-        if (resp.error || !resp.access_token) {
-          showToast('⚠ Gmail access needed to sync'); return;
-        }
-        _gmailToken  = resp.access_token;
-        _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
-        sessionStorage.setItem('gcrm_token', _gmailToken);
-        sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
-        showToast('✓ Gmail connected — starting full scan…');
-        startBackgroundSync();
-      }
+      callback: onToken
     });
   } else {
-    _tokenClient.callback = function(resp) {
-      _tokenPending = null;
-      if (resp.error || !resp.access_token) {
-        showToast('⚠ Gmail access needed to sync'); return;
-      }
-      _gmailToken  = resp.access_token;
-      _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
-      sessionStorage.setItem('gcrm_token', _gmailToken);
-      sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
-      showToast('✓ Gmail connected — starting full scan…');
-      startBackgroundSync();
-    };
+    _tokenClient.callback = onToken;
   }
+
+  // Always use consent prompt so Google actually returns a token
+  // This is the ONE popup per session — after this sync runs without popups
   _tokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
-// requestGmailAndSync — called by the ⟳ Sync button
-function requestGmailAndSync() {
-  if (isDemo) { showToast('Demo mode — connect real Gmail to sync'); return; }
-  if (bgSyncing) { showToast('Sync already running…'); return; }
-  // If we have a valid cached token, sync immediately
-  var cached    = sessionStorage.getItem('gcrm_token');
-  var cachedExp = parseInt(sessionStorage.getItem('gcrm_token_exp') || '0');
-  if (cached && Date.now() < cachedExp - 120000) {
-    _gmailToken = cached; _tokenExpiry = cachedExp;
-    startBackgroundSync();
-    return;
-  }
-  // No valid token — request one silently first, fall back to prompt
-  if (!_tokenClient) {
-    _tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
-      callback: function(resp) {
-        _tokenPending = null;
-        if (resp.error || !resp.access_token) {
-          showToast('⚠ Gmail access needed — try Full Rescan'); return;
-        }
-        _gmailToken  = resp.access_token;
-        _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
-        sessionStorage.setItem('gcrm_token', _gmailToken);
-        sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
-        startBackgroundSync();
-      }
-    });
-  } else {
-    _tokenClient.callback = function(resp) {
-      _tokenPending = null;
-      if (resp.error || !resp.access_token) {
-        showToast('⚠ Gmail access needed — try Full Rescan'); return;
-      }
-      _gmailToken  = resp.access_token;
-      _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
-      sessionStorage.setItem('gcrm_token', _gmailToken);
-      sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
-      startBackgroundSync();
-    };
-  }
-  _tokenClient.requestAccessToken({ prompt: '' });
-}
+function forceFullRescan() { getGmailTokenThenSync(true); }
+function requestGmailAndSync() { getGmailTokenThenSync(false); }
 
 // ════════════════════════════════════════════════════════════════════
 // SECTION 2: FIREBASE
