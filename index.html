@@ -1448,9 +1448,8 @@ function renderContacts() {
     if (c.liPhoto) {
       avHtml = '<div class="c-avatar"><img src="'+c.liPhoto+'" alt=""></div>';
     } else if (domain && !PERSONAL_DOMAINS.includes(domain)) {
-      avHtml = '<div class="c-avatar-logo">'
-        + '<img src="https://logo.clearbit.com/'+domain+'" alt="" '
-        + 'onerror="this.parentElement.outerHTML='<div class=\"c-avatar\" style=\"background:'+avatarColor(email)+'\">'+initials(name)+'</div>'">'
+      avHtml = '<div class="c-avatar-logo" data-fb="'+avatarColor(email)+'" data-ini="'+initials(name)+'">'
+        + '<img src="https://logo.clearbit.com/'+domain+'" alt="" onError="logoFallback(this)">'
         + '</div>';
     } else {
       avHtml = '<div class="c-avatar" style="background:'+avatarColor(email)+'">'+initials(name)+'</div>';
@@ -2069,6 +2068,13 @@ function animateImpactCounters() {
 // ════════════════════════════════════════════════════════════════════
 // SECTION 17: UTILITIES
 // ════════════════════════════════════════════════════════════════════
+
+function logoFallback(img) {
+  var wrapper = img.parentElement;
+  var color = wrapper.getAttribute('data-fb') || '#155c2c';
+  var ini   = wrapper.getAttribute('data-ini') || '?';
+  wrapper.outerHTML = '<div class="c-avatar" style="background:'+color+'">'+ini+'</div>';
+}
 
 function getHdr(msg,name){
   var h=((msg.payload&&msg.payload.headers)||[]).find(function(h){return h.name===name;});
