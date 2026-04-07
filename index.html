@@ -825,23 +825,31 @@ async function gFetch(url, opts) {
 }
 
 // forceFullRescan — clears incremental sync date and rescans everything
-// getGmailTokenThenSync — single function used by BOTH buttons
-// Always shows consent popup to guarantee a fresh Gmail token
-// prompt:'select_account' = user picks account, no silent fail
+// getGmailTokenThenSync — handles both Sync and Full Rescan buttons
+// First call per session: shows account picker (one popup only)
+// Subsequent calls: uses cached token, no popup needed
 function getGmailTokenThenSync(fullRescan) {
   if (isDemo) { showToast('Demo mode — connect real Gmail to sync'); return; }
   if (bgSyncing) { showToast('Sync already running…'); return; }
 
   if (fullRescan) {
-    if (!confirm('This will rescan your entire Gmail history from scratch. It may take several minutes. Continue?')) return;
+    if (!confirm('Rescan entire Gmail history from scratch. May take several minutes. Continue?')) return;
     localStorage.removeItem('gcrm_lastSyncDate');
     localStorage.removeItem('gcrm_lastSync');
-    _gmailToken = null; _tokenExpiry = 0;
-    sessionStorage.removeItem('gcrm_token');
-    sessionStorage.removeItem('gcrm_token_exp');
   }
 
-  // Reuse or create token client
+  // If we have a valid cached token, start sync immediately — no popup
+  var cached    = sessionStorage.getItem('gcrm_token');
+  var cachedExp = parseInt(sessionStorage.getItem('gcrm_token_exp') || '0');
+  if (cached && Date.now() < cachedExp - 120000) {
+    _gmailToken  = cached;
+    _tokenExpiry = cachedExp;
+    showToast(fullRescan ? 'Starting full rescan…' : 'Syncing Gmail…');
+    startBackgroundSync();
+    return;
+  }
+
+  // No valid token — show account picker ONCE, then cache the token
   var onToken = function(resp) {
     if (resp.error || !resp.access_token) {
       showToast('⚠ Gmail access denied — please try again');
@@ -849,6 +857,7 @@ function getGmailTokenThenSync(fullRescan) {
     }
     _gmailToken  = resp.access_token;
     _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
+    // Cache in sessionStorage so future syncs skip the popup
     sessionStorage.setItem('gcrm_token', _gmailToken);
     sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
     showToast('✓ Gmail connected — scanning…');
@@ -865,9 +874,8 @@ function getGmailTokenThenSync(fullRescan) {
     _tokenClient.callback = onToken;
   }
 
-  // Always use consent prompt so Google actually returns a token
-  // This is the ONE popup per session — after this sync runs without popups
-  _tokenClient.requestAccessToken({ prompt: 'consent' });
+  // Show account picker on first call, silent on subsequent (prompt:'')
+  _tokenClient.requestAccessToken({ prompt: 'select_account' });
 }
 
 function forceFullRescan() { getGmailTokenThenSync(true); }
@@ -972,9 +980,14 @@ async function startBackgroundSync() {
     // If no query at all, Gmail requires something — use wildcard
     if (!query.trim()) query = 'in:all';
 
-    // Build a lookup map from existing contacts for fast merge
+    // Build lookup map — but ZERO OUT all scores before recalculating
+    // This ensures Joana and others don't carry forward fake stale scores
     var contactMap = {};
-    allContacts.forEach(function(c) { contactMap[c.email] = c; });
+    allContacts.forEach(function(c) {
+      contactMap[c.email] = c;
+      c['keyword score'] = 0;  // reset score — will be recalculated fresh
+      c['email count']   = 0;  // reset email count too
+    });
 
     var pageToken = null;
     var totalScanned = 0;
@@ -1581,71 +1594,11 @@ async function saveContact() {
 // The user MUST verify before confirming.
 // ════════════════════════════════════════════════════════════════════
 
-var _liSuggestion = null;
 
-async function suggestLinkedIn() {
-  if (!activeContact) return;
-  var c = activeContact;
-  showToast('⏳ Looking up LinkedIn profile…');
-  try {
-    var prompt = 'Based on this professional contact, suggest their most likely LinkedIn profile URL.\n'
-      + 'Name: ' + c.name + '\n'
-      + 'Company: ' + (c.company || 'unknown') + '\n'
-      + 'Email domain: ' + c.email.split('@')[1] + '\n'
-      + 'Last email subject: ' + (c['last subject'] || 'unknown') + '\n\n'
-      + 'Respond with ONLY a JSON object (no markdown, no explanation):\n'
-      + '{"url":"https://linkedin.com/in/...","displayName":"Full Name","title":"Job Title","confidence":"high|medium|low"}';
 
-    var res = await fetch(AI_PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 200,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    if (!res.ok) { showToast('⚠ AI proxy returned error ' + res.status); return; }
-    var data = await res.json();
-    if (!data.content || !data.content[0]) { showToast('⚠ No AI response'); return; }
-    var raw = data.content[0].text.trim();
-    var jsonMatch = raw.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) { showToast('⚠ Could not parse AI response'); return; }
-    var info = JSON.parse(jsonMatch[0]);
-    if (!info.url || !info.url.includes('linkedin.com')) { showToast('⚠ AI could not generate a LinkedIn URL'); return; }
 
-    _liSuggestion = info;
-    document.getElementById('liSuggestName').textContent  = info.displayName || c.name;
-    document.getElementById('liSuggestTitle').textContent = (info.title||'') + (info.confidence ? '  ·  ' + info.confidence + ' confidence' : '');
-    document.getElementById('liSuggestUrl').textContent   = info.url;
-    document.getElementById('liSuggestUrl').href          = info.url;
-    document.getElementById('liSuggestBox').style.display = 'block';
-    showToast('✓ Suggestion ready — verify before confirming!');
-  } catch(e) {
-    console.error('LinkedIn suggest error:', e);
-    showToast('⚠ LinkedIn lookup failed — paste URL manually');
-  }
-}
 
-async function confirmLinkedIn() {
-  if (!_liSuggestion || !activeContact) return;
-  activeContact.liUrl   = _liSuggestion.url   || '';
-  activeContact.liTitle = _liSuggestion.title  || '';
-  document.getElementById('mLIUrl').value       = activeContact.liUrl;
-  document.getElementById('liSuggestBox').style.display = 'none';
-  document.getElementById('mLI').href           = activeContact.liUrl;
-  document.getElementById('mLI').style.display  = 'inline-flex';
-  await saveContactToFirebase(activeContact);
-  renderAll();
-  showToast('✓ LinkedIn confirmed');
-  await enrichLinkedIn();
-}
 
-function dismissLinkedIn() {
-  _liSuggestion = null;
-  document.getElementById('liSuggestBox').style.display = 'none';
-  showToast('Dismissed — paste the correct URL below');
-}
 
 async function enrichLinkedIn() {
   if (!activeContact) return;
@@ -1873,12 +1826,45 @@ function renderKeywords() {
     return '<span class="kw-tag active">'+esc(kw)+'<button class="kw-rm" onclick="rmKw('+i+',event)">×</button></span>';
   }).join('');
 }
+// autoResync — triggered automatically when keywords change
+// Uses cached token if available (no popup), otherwise skips silently
+function autoResync() {
+  if (bgSyncing) return;
+  // Keywords changed = must rescan everything so new keyword scores all history
+  localStorage.removeItem('gcrm_lastSyncDate');
+  var cached    = sessionStorage.getItem('gcrm_token');
+  var cachedExp = parseInt(sessionStorage.getItem('gcrm_token_exp') || '0');
+  if (cached && Date.now() < cachedExp - 120000) {
+    _gmailToken  = cached;
+    _tokenExpiry = cachedExp;
+    startBackgroundSync();
+  } else {
+    showToast('Keyword updated — click ⟳ Sync Gmail to apply');
+  }
+}
+
 function confirmKw() {
   var val=document.getElementById('kwInput').value.trim().toLowerCase();
-  if(val && !keywords.includes(val)){ keywords.push(val); localStorage.setItem('gcrm_kw',JSON.stringify(keywords)); renderKeywords(); showToast('✓ Keyword added — re-sync to apply'); }
-  closeModal('kwModal');
+  if(val && !keywords.includes(val)){
+    keywords.push(val);
+    localStorage.setItem('gcrm_kw',JSON.stringify(keywords));
+    renderKeywords();
+    closeModal('kwModal');
+    showToast('✓ Keyword "'+val+'" added — resyncing…');
+    autoResync();
+  } else {
+    closeModal('kwModal');
+  }
 }
-function rmKw(i,e){ e.stopPropagation(); keywords.splice(i,1); localStorage.setItem('gcrm_kw',JSON.stringify(keywords)); renderKeywords(); }
+function rmKw(i,e){
+  e.stopPropagation();
+  var removed = keywords[i];
+  keywords.splice(i,1);
+  localStorage.setItem('gcrm_kw',JSON.stringify(keywords));
+  renderKeywords();
+  showToast('✓ Keyword "'+removed+'" removed — resyncing…');
+  autoResync();
+}
 
 function setPreset(p,el) {
   var now=new Date(), from=new Date();
@@ -1917,24 +1903,26 @@ async function importSignatureFromGmail() {
     var listData=await listRes.json();
     var msgs=(listData.messages||[]);
     if(!msgs.length){ showToast('No sent emails found'); return; }
-    // Try each of the last 3 sent emails to find one with a signature
+    // extractText declared once outside loop
+    var sigBody = '';
+    var extractText = function(parts){
+      if(!parts) return;
+      parts.forEach(function(p){
+        if(p.mimeType==='text/plain'&&p.body&&p.body.data){
+          sigBody=atob(p.body.data.replace(/-/g,'+').replace(/_/g,'/'));
+        }
+        if(p.parts) extractText(p.parts);
+      });
+    };
     for(var m of msgs){
       var mr=await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+m.id+'?format=full');
       if(!mr.ok) continue;
       var md=await mr.json();
-      var body='';
-      function extractText(parts){
-        if(!parts) return;
-        parts.forEach(function(p){
-          if(p.mimeType==='text/plain'&&p.body&&p.body.data){
-            body=atob(p.body.data.replace(/-/g,'+').replace(/_/g,'/'));
-          }
-          if(p.parts) extractText(p.parts);
-        });
-      }
+      sigBody='';
       if(md.payload&&md.payload.body&&md.payload.body.data){
-        body=atob(md.payload.body.data.replace(/-/g,'+').replace(/_/g,'/'));
+        sigBody=atob(md.payload.body.data.replace(/-/g,'+').replace(/_/g,'/'));
       } else { extractText(md.payload&&md.payload.parts); }
+      var body=sigBody;
       if(!body) continue;
       // Look for sig after '--' separator
       var lines=body.split('\n');
