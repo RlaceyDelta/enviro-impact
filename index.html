@@ -8,7 +8,7 @@
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged }
     from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
   import { getFirestore, doc, setDoc, getDoc, collection, getDocs, writeBatch, deleteDoc }
     from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
@@ -30,7 +30,7 @@
   provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
 
   // Expose to global scope
-  window._firebase = { auth, db, provider, signInWithPopup, signOut, onAuthStateChanged,
+  window._firebase = { auth, db, provider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
     doc, setDoc, getDoc, collection, getDocs, writeBatch, deleteDoc };
 </script>
 <style>
@@ -480,7 +480,6 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
         <div class="sec-lbl">Notes</div>
         <textarea class="notes-fld" id="mNotes" placeholder="Add notes about this contact…"></textarea>
         <div class="sec-lbl">LinkedIn</div>
-        <!-- LinkedIn suggestion removed - use manual URL paste below -->
         <div id="liManualBox" style="margin-bottom:12px">
           <input type="text" class="mini-inp" id="mLIUrl" placeholder="https://linkedin.com/in/..." style="margin-bottom:8px">
           <div style="display:flex;gap:8px">
@@ -608,9 +607,7 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
 
 <script>
 // ═══════════════════════════════════════════════════════════════════
-// GCRM v7 — Complete JS Engine Rewrite
-// Fixed: token persistence, sync counter, scoring, search, reconnect,
-//        LinkedIn, signature import, contact display, date filtering
+// GCRM v8 — Redirect-based sign-in (no popup blocker issues)
 // ═══════════════════════════════════════════════════════════════════
 
 // ── CONFIG ──────────────────────────────────────────────────────────
@@ -645,10 +642,10 @@ var currentUser   = null;
 var bgSyncing     = false;
 
 // Gmail OAuth token state
-var _gmailToken   = null;   // the actual access token string
-var _tokenExpiry  = 0;      // ms timestamp when it expires
-var _tokenClient  = null;   // GIS token client (reused, not recreated)
-var _tokenPending = null;   // Promise while a token request is in flight
+var _gmailToken   = null;
+var _tokenExpiry  = 0;
+var _tokenClient  = null;
+var _tokenPending = null;
 
 // Persisted user data
 var keywords  = JSON.parse(localStorage.getItem('gcrm_kw')    || '["proposal","project","biologix","in situ","ex situ"]');
@@ -665,51 +662,43 @@ var SPAM_PREFIXES = ['noreply','no-reply','donotreply','mailer-daemon','postmast
 var PERSONAL_DOMAINS = ['gmail.com','hotmail.com','yahoo.com','outlook.com','icloud.com','live.com','me.com','msn.com'];
 
 // ════════════════════════════════════════════════════════════════════
-// SECTION 1: AUTH & TOKEN MANAGEMENT
-// The root cause of "re-sign in every sync" was that we were creating
-// a new tokenClient on every call. Now we create it ONCE and reuse it.
-// ensureGmailToken() is the single entry point for all Gmail API calls.
+// SECTION 1: AUTH — now uses signInWithRedirect (no popup blocker)
+// Flow: user clicks "Connect with Google" → page redirects to Google
+//       → Google redirects back → getRedirectResult() picks up the user
 // ════════════════════════════════════════════════════════════════════
 
-// signIn: requests Gmail token FIRST (one popup covers everything),
-// caches it in sessionStorage so syncs never need a popup again.
 function signIn() {
   var fb = window._firebase;
   if (!fb) { showToast('Loading… try again in a second'); return; }
-
-  if (!_tokenClient) {
-    _tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
-      callback: function(resp) {
-        _tokenPending = null;
-        if (resp.error || !resp.access_token) {
-          showToast('⚠ Gmail access needed — please try again');
-          return;
-        }
-        _gmailToken  = resp.access_token;
-        _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
-        sessionStorage.setItem('gcrm_token', _gmailToken);
-        sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
-        fb.signInWithPopup(fb.auth, fb.provider)
-          .catch(function(err) { showToast('⚠ Sign in failed: ' + err.message); });
-      }
-    });
-  }
-  _tokenClient.requestAccessToken({ prompt: 'select_account' });
+  // Redirect to Google — no popup, works in all browsers
+  fb.signInWithRedirect(fb.auth, fb.provider).catch(function(err) {
+    showToast('⚠ Sign in error: ' + err.message);
+  });
 }
 
 function initAuth() {
   var fb = window._firebase;
   if (!fb) { setTimeout(initAuth, 300); return; }
 
-  // Restore cached Gmail token from sessionStorage (survives page refresh)
+  // Restore cached Gmail token from sessionStorage
   var cachedToken  = sessionStorage.getItem('gcrm_token');
   var cachedExpiry = parseInt(sessionStorage.getItem('gcrm_token_exp') || '0');
   if (cachedToken && Date.now() < cachedExpiry - 120000) {
     _gmailToken  = cachedToken;
     _tokenExpiry = cachedExpiry;
   }
+
+  // Handle the redirect result (called after Google redirects back to our page)
+  fb.getRedirectResult(fb.auth).then(function(result) {
+    if (result && result.user) {
+      // Successfully signed in via redirect — user is now set
+      // onAuthStateChanged below will fire and show the app
+    }
+  }).catch(function(err) {
+    if (err.code !== 'auth/no-auth-event') {
+      showToast('⚠ Sign in failed: ' + err.message);
+    }
+  });
 
   fb.onAuthStateChanged(fb.auth, function(user) {
     if (user) {
@@ -752,22 +741,17 @@ function doSignOut() {
   showLanding();
 }
 
-// ensureGmailToken — THE single source of truth for Gmail access.
-// Returns the token string, or null if unavailable.
-// Never shows a popup if user already consented — uses prompt:''.
+// ensureGmailToken — gets a Gmail API token silently (no popup)
 function ensureGmailToken() {
-  // Check in-memory token first
   if (_gmailToken && Date.now() < _tokenExpiry - 120000) {
     return Promise.resolve(_gmailToken);
   }
-  // Check sessionStorage (survives page refresh within same tab session)
   var cached    = sessionStorage.getItem('gcrm_token');
   var cachedExp = parseInt(sessionStorage.getItem('gcrm_token_exp') || '0');
   if (cached && Date.now() < cachedExp - 120000) {
     _gmailToken = cached; _tokenExpiry = cachedExp;
     return Promise.resolve(_gmailToken);
   }
-  // If a request is already in flight, wait for it
   if (_tokenPending) return _tokenPending;
 
   _tokenPending = new Promise(function(resolve) {
@@ -776,11 +760,9 @@ function ensureGmailToken() {
         _tokenClient = google.accounts.oauth2.initTokenClient({
           client_id: GOOGLE_CLIENT_ID,
           scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
-          // callback is reassigned on each call below
           callback: function() {}
         });
       }
-      // Assign fresh callback each time
       _tokenClient.callback = function(resp) {
         _tokenPending = null;
         if (resp.error || !resp.access_token) {
@@ -794,7 +776,7 @@ function ensureGmailToken() {
         sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
         resolve(_gmailToken);
       };
-      // prompt:'' = silent consent reuse, no popup if already authorised
+      // prompt:'' = silent — no popup shown, reuses existing consent
       _tokenClient.requestAccessToken({ prompt: '' });
     } catch(e) {
       _tokenPending = null;
@@ -806,14 +788,13 @@ function ensureGmailToken() {
   return _tokenPending;
 }
 
-// Authenticated fetch — auto-refreshes token if needed
+// Authenticated fetch with auto-refresh
 async function gFetch(url, opts) {
   var token = await ensureGmailToken();
   if (!token) throw new Error('No Gmail token available');
   var o = opts || {};
   o.headers = Object.assign({ 'Authorization': 'Bearer ' + token }, o.headers || {});
   var resp = await fetch(url, o);
-  // Token expired mid-request? Force refresh and retry once
   if (resp.status === 401) {
     _gmailToken = null; _tokenExpiry = 0;
     token = await ensureGmailToken();
@@ -824,10 +805,6 @@ async function gFetch(url, opts) {
   return resp;
 }
 
-// forceFullRescan — clears incremental sync date and rescans everything
-// getGmailTokenThenSync — handles both Sync and Full Rescan buttons
-// First call per session: shows account picker (one popup only)
-// Subsequent calls: uses cached token, no popup needed
 function getGmailTokenThenSync(fullRescan) {
   if (isDemo) { showToast('Demo mode — connect real Gmail to sync'); return; }
   if (bgSyncing) { showToast('Sync already running…'); return; }
@@ -838,23 +815,17 @@ function getGmailTokenThenSync(fullRescan) {
     localStorage.removeItem('gcrm_lastSync');
   }
 
-  // If we have a valid cached token, start sync immediately — no popup
   var cached    = sessionStorage.getItem('gcrm_token');
   var cachedExp = parseInt(sessionStorage.getItem('gcrm_token_exp') || '0');
   if (cached && Date.now() < cachedExp - 120000) {
     _gmailToken  = cached;
     _tokenExpiry = cachedExp;
-    if (fullRescan) {
-      showToast('↺ Full Rescan started — this will take a few minutes…');
-    } else {
-      var lastSync = localStorage.getItem('gcrm_lastSync') || 'never';
-      showToast('⟳ Syncing new emails since ' + lastSync + '…');
-    }
+    showToast(fullRescan ? '↺ Full Rescan started…' : '⟳ Syncing new emails…');
     startBackgroundSync();
     return;
   }
 
-  // No valid token — show account picker ONCE, then cache the token
+  // Need a fresh token — use GIS token client (silent if already consented, one popup if not)
   var onToken = function(resp) {
     if (resp.error || !resp.access_token) {
       showToast('⚠ Gmail access denied — please try again');
@@ -862,7 +833,6 @@ function getGmailTokenThenSync(fullRescan) {
     }
     _gmailToken  = resp.access_token;
     _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
-    // Cache in sessionStorage so future syncs skip the popup
     sessionStorage.setItem('gcrm_token', _gmailToken);
     sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
     showToast('✓ Gmail connected — scanning…');
@@ -879,8 +849,7 @@ function getGmailTokenThenSync(fullRescan) {
     _tokenClient.callback = onToken;
   }
 
-  // Show account picker on first call, silent on subsequent (prompt:'')
-  _tokenClient.requestAccessToken({ prompt: 'select_account' });
+  _tokenClient.requestAccessToken({ prompt: '' });
 }
 
 function forceFullRescan() { getGmailTokenThenSync(true); }
@@ -926,7 +895,6 @@ async function saveAllToFirebase() {
   if (!currentUser || isDemo || allContacts.length === 0) return;
   var fb = window._firebase;
   try {
-    // Firestore batch limit is 500
     var chunks = [];
     for (var i = 0; i < allContacts.length; i += 400) {
       chunks.push(allContacts.slice(i, i + 400));
@@ -945,12 +913,6 @@ async function saveAllToFirebase() {
 
 // ════════════════════════════════════════════════════════════════════
 // SECTION 3: GMAIL SYNC ENGINE
-// Completely rewritten. Key fixes:
-// - Uses gFetch() which auto-refreshes token (no more re-sign-in prompts)
-// - Counter is real cumulative total, not faked
-// - Handles empty keywords (scans all mail)
-// - Scores subject + snippet, skips own email address
-// - Merges correctly into allContacts without duplicates
 // ════════════════════════════════════════════════════════════════════
 
 async function startBackgroundSync() {
@@ -959,7 +921,6 @@ async function startBackgroundSync() {
   showLearning(true, 'Connecting to Gmail…');
 
   try {
-    // Test token first so we get a clear error if auth fails
     var token = await ensureGmailToken();
     if (!token) {
       showLearning(false);
@@ -968,31 +929,22 @@ async function startBackgroundSync() {
       return;
     }
 
-    // Build query from keywords, or scan everything if none set
     var kwQuery = keywords.length > 0
       ? keywords.map(function(kw) { return '"' + kw + '"'; }).join(' OR ')
-      : ''; // empty = all mail
+      : '';
 
-    // Incremental sync — only fetch emails newer than last sync
-    // On first ever sync, scan everything. After that, only new mail.
     var lastSyncDate = localStorage.getItem('gcrm_lastSyncDate') || '';
     var isFirstSync  = !lastSyncDate;
     var query = kwQuery;
     if (!isFirstSync) {
-      // Add after: filter so we only scan new emails
       query = (kwQuery ? kwQuery + ' ' : '') + 'after:' + lastSyncDate;
     }
-    // If no query at all, Gmail requires something — use wildcard
     if (!query.trim()) query = 'in:all';
 
-    // Build lookup map
-    // Full Rescan: zero scores so they rebuild from scratch
-    // Incremental sync: keep existing scores, accumulate new points
     var contactMap = {};
     allContacts.forEach(function(c) {
       contactMap[c.email] = c;
       if (isFirstSync) {
-        // Only zero on full rescan — cumulative scoring on incremental
         c['keyword score'] = 0;
         c['email count']   = 0;
       }
@@ -1000,7 +952,6 @@ async function startBackgroundSync() {
 
     var pageToken = null;
     var totalScanned = 0;
-    var totalContacts = allContacts.length;
     var PAGE_SIZE = 500;
 
     showLearning(true, 'Scanning Gmail…');
@@ -1012,27 +963,20 @@ async function startBackgroundSync() {
       if (pageToken) url += '&pageToken=' + pageToken;
 
       var listRes = await gFetch(url);
-      if (!listRes.ok) {
-        var errBody = await listRes.text();
-        console.error('Gmail list error', listRes.status, errBody);
-        break;
-      }
+      if (!listRes.ok) break;
       var listData = await listRes.json();
       var threads  = listData.threads || [];
       pageToken    = listData.nextPageToken || null;
 
-      // Process threads in parallel chunks of 20
       for (var i = 0; i < threads.length; i += 5) {
-        var chunk = threads.slice(i, i + 5);  // 5 parallel max — prevents browser bog-down
+        var chunk = threads.slice(i, i + 5);
         var results = await Promise.all(
           chunk.map(function(t) { return fetchThreadContacts(t.id); })
         );
 
-        // Merge chunk results into contactMap and allContacts
         results.forEach(function(threadContacts) {
           threadContacts.forEach(function(nc) {
             if (contactMap[nc.email]) {
-              // Merge into existing
               var ex = contactMap[nc.email];
               ex['keyword score'] += nc['keyword score'];
               ex['email count']   += nc['email count'];
@@ -1044,42 +988,29 @@ async function startBackgroundSync() {
                 ex['first contact'] = nc['first contact'];
               }
             } else {
-              // New contact
               contactMap[nc.email] = nc;
               allContacts.push(nc);
-              totalContacts++;
             }
           });
         });
 
         totalScanned += chunk.length;
-        showLearning(true,
-          'Scanned ' + totalScanned + ' threads · ' + allContacts.length + ' contacts found'
-        );
+        showLearning(true, 'Scanned ' + totalScanned + ' threads · ' + allContacts.length + ' contacts found');
       }
 
-      // Render every 5 pages to avoid bogging browser with constant DOM updates
       if (totalScanned % 500 === 0 || !pageToken) renderAll();
 
-    } while (pageToken); // No limit — scan ALL threads, save progress as we go
+    } while (pageToken);
 
-    // Save the last page token so next sync can resume if interrupted
-    if (!pageToken) {
-      localStorage.removeItem('gcrm_resumeToken');
-    }
-
-    // Final save and wrap-up
     await saveAllToFirebase();
     var now = new Date();
     var nowStr = now.toLocaleDateString();
-    // Save sync date in Gmail format (yyyy/mm/dd) for incremental sync
     var gmailDateStr = now.getFullYear() + '/'
       + String(now.getMonth()+1).padStart(2,'0') + '/'
       + String(now.getDate()).padStart(2,'0');
     localStorage.setItem('gcrm_lastSync', nowStr);
     localStorage.setItem('gcrm_lastSyncDate', gmailDateStr);
-    document.getElementById('sSync').textContent = nowStr
-      + (isFirstSync ? ' (full scan)' : ' (incremental)');
+    document.getElementById('sSync').textContent = nowStr + (isFirstSync ? ' (full scan)' : ' (incremental)');
     showLearning(false);
     renderAll();
     showToast('✓ Done — ' + allContacts.length + ' contacts from ' + totalScanned + ' threads');
@@ -1095,7 +1026,6 @@ async function startBackgroundSync() {
   bgSyncing = false;
 }
 
-// fetchThreadContacts — returns array of contact objects found in one thread
 async function fetchThreadContacts(threadId) {
   try {
     var res = await gFetch(
@@ -1108,7 +1038,7 @@ async function fetchThreadContacts(threadId) {
     var data    = await res.json();
     var msgs    = data.messages || [];
     var snippet = (data.snippet || '').toLowerCase();
-    var found   = {}; // email -> contact object for this thread
+    var found   = {};
 
     msgs.forEach(function(msg) {
       var from    = getHdr(msg, 'From')    || '';
@@ -1119,21 +1049,18 @@ async function fetchThreadContacts(threadId) {
       if (!emMatch) return;
       var email = emMatch[0].toLowerCase();
 
-      // Skip own email and spam-like addresses
       if (currentUser && email === currentUser.email.toLowerCase()) return;
       if (isSpamEmail(email)) return;
 
       var nameMatch = from.match(/^"?([^"<]+)"?\s*</);
       var name = nameMatch ? nameMatch[1].trim() : email.split('@')[0];
 
-      // Score: 1 point per keyword mention per email (subject + snippet combined)
-      // Multiple keywords each contribute their own points to one total score
       var searchText = (subject + ' ' + snippet).toLowerCase();
       var score = 0;
       keywords.forEach(function(kw) {
         var re = new RegExp(kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
         var matches = searchText.match(re);
-        if (matches) score += matches.length; // 1 point per mention
+        if (matches) score += matches.length;
       });
 
       var d    = date ? new Date(date) : new Date();
@@ -1145,7 +1072,7 @@ async function fetchThreadContacts(threadId) {
           email:            email,
           company:          extractCo(email),
           'keyword score':  score,
-          'email count':    1, // 1 per thread, not per message
+          'email count':    1,
           'first contact':  dStr,
           'last contact':   dStr,
           'last subject':   subject,
@@ -1155,8 +1082,6 @@ async function fetchThreadContacts(threadId) {
           liTitle:          '',
         };
       } else {
-        // Same thread, same contact — accumulate score but DON'T increment count
-        // email count = number of threads, not number of messages within threads
         found[email]['keyword score'] += score;
         if (dStr < found[email]['first contact']) found[email]['first contact'] = dStr;
         if (dStr > found[email]['last contact'])  { found[email]['last contact'] = dStr; found[email]['last subject'] = subject; }
@@ -1171,8 +1096,6 @@ async function fetchThreadContacts(threadId) {
 
 // ════════════════════════════════════════════════════════════════════
 // SECTION 4: DUAL SEARCH
-// Fixed: always tries to get token, shows contacts that ARE in CRM
-// separately from NEW contacts found in Gmail
 // ════════════════════════════════════════════════════════════════════
 
 var gmailSearchTimer = null;
@@ -1199,7 +1122,6 @@ async function doGmailSearch(q) {
     allContacts.forEach(function(c) { existingEmails[c.email] = true; });
 
     var found = {};
-    var processed = 0;
     for (var t of threads.slice(0, 25)) {
       var tr = await gFetch(
         'https://gmail.googleapis.com/gmail/v1/users/me/threads/' + t.id
@@ -1214,7 +1136,7 @@ async function doGmailSearch(q) {
         var email = em[0].toLowerCase();
         if (currentUser && email === currentUser.email.toLowerCase()) return;
         if (isSpamEmail(email)) return;
-        if (existingEmails[email]) return; // already in CRM
+        if (existingEmails[email]) return;
         var nameM = from.match(/^"?([^"<]+)"?\s*</);
         var subj  = getHdr(msg, 'Subject') || '';
         var date  = getHdr(msg, 'Date') || '';
@@ -1230,14 +1152,12 @@ async function doGmailSearch(q) {
           notes:          '',
         };
       });
-      processed++;
     }
 
     var arr = Object.values(found);
     if (arr.length > 0) showGmailFound(arr, q);
     else hideGmailFound();
   } catch(e) {
-    console.error('Gmail search error:', e);
     hideGmailFound();
   }
 }
@@ -1318,721 +1238,4 @@ async function syncToGoogleContacts() {
   showToast('✓ Google Contacts updated');
 }
 
-// ════════════════════════════════════════════════════════════════════
-// SECTION 6: RENDER & FILTER
-// Date filter applies to DISPLAY only (not to what gets scanned)
-// ════════════════════════════════════════════════════════════════════
-
-function renderAll() { filterLocal(); updateStats(); }
-
-function filterLocal() {
-  var q        = (document.getElementById('mainSearch').value || '').toLowerCase().trim();
-  var catF     = document.getElementById('filterCat').value;
-  var showF    = document.getElementById('filterShow').value;
-  var dateFrom = document.getElementById('dateFrom').value || '';
-  var dateTo   = document.getElementById('dateTo').value   || '';
-
-  filtered = allContacts.filter(function(c) {
-    var cat  = (c.classification || '').trim();
-    var isX  = cat === 'Exclude';
-    if (showF === 'visible'  && isX)  return false;
-    if (showF === 'excluded' && !isX) return false;
-    if (catF  && cat !== catF)        return false;
-    // Date range filter on last contact date (display only)
-    var lc = c['last contact'] || '';
-    if (dateFrom && lc && lc < dateFrom) return false;
-    if (dateTo   && lc && lc > dateTo)   return false;
-    // Text search across name, email, company, notes, last subject
-    if (q) {
-      var hay = [c.name, c.email, c.company||'', c.notes||'', c['last subject']||''].join(' ').toLowerCase();
-      if (hay.indexOf(q) < 0) return false;
-    }
-    return true;
-  });
-
-  doSort(true);
-}
-
-function sortBy(mode, btn) {
-  sortMode = mode;
-  document.querySelectorAll('.sort-btn').forEach(function(b) { b.classList.remove('active'); });
-  if (btn) btn.classList.add('active');
-  doSort(false);
-}
-
-function doSort(skipUI) {
-  // No keywords active = always sort by most recent regardless of sort mode
-  var effectiveMode = keywords.length === 0 ? 'recent' : sortMode;
-  filtered.sort(function(a, b) {
-    if (effectiveMode === 'score')  return parseInt(b['keyword score']||0) - parseInt(a['keyword score']||0);
-    if (effectiveMode === 'recent') return (b['last contact']||'') > (a['last contact']||'') ? 1 : -1;
-    if (effectiveMode === 'emails') return parseInt(b['email count']||0)   - parseInt(a['email count']||0);
-    return 0;
-  });
-  renderContacts();
-  updateStats();
-}
-
-function avatarColor(email) {
-  var n = 0;
-  for (var i = 0; i < email.length; i++) n += email.charCodeAt(i);
-  return AVATAR_COLORS[n % AVATAR_COLORS.length];
-}
-function initials(name) {
-  if (!name) return '?';
-  var p = name.trim().split(/\s+/);
-  return p.length > 1 ? (p[0][0] + p[p.length-1][0]).toUpperCase() : name.substring(0,2).toUpperCase();
-}
-
-function renderContacts() {
-  var grid  = document.getElementById('cGrid');
-  var state = document.getElementById('stateBox');
-  var hasKw = keywords.length > 0;
-
-  if (allContacts.length === 0) {
-    state.style.display = 'flex'; grid.innerHTML = '';
-    document.getElementById('resCount').textContent = '';
-    return;
-  }
-  if (filtered.length === 0) {
-    grid.innerHTML = '';
-    showStateBox('empty', 'No contacts match', 'Try a broader search or different date range');
-    document.getElementById('resCount').textContent = '';
-    return;
-  }
-  state.style.display = 'none';
-  document.getElementById('resCount').textContent = filtered.length + ' contacts';
-
-  var now     = new Date();
-  var ninety  = new Date(now - 90  * 864e5);
-  var oneYear = new Date(now - 365 * 864e5);
-
-  grid.innerHTML = filtered.map(function(c, i) {
-    var email   = c.email || '';
-    var name    = c.name  || email;
-    var co      = c.company || '';
-    var score   = parseInt(c['keyword score'] || 0);
-    var count   = parseInt(c['email count']   || 0);
-    var last    = c['last contact'] || '';
-    var cat     = (c.classification || '').trim();
-    var catInfo = cats.find(function(x) { return x.name === cat; });
-    var lastDate = last ? new Date(last) : null;
-    var pCls = !lastDate ? 'pc' : lastDate > ninety ? 'ph' : lastDate > oneYear ? 'pw' : 'pc';
-    var aLbl = !lastDate ? '' : lastDate > ninety ? 'Active' : lastDate > oneYear ? 'Recent' : 'Cold';
-    var catHtml = cat
-      ? '<span class="cat-pill '+(catInfo?catInfo.cls:'p-none')+'" style="'+(catInfo?'background:'+catInfo.bg+';color:'+catInfo.color:'')+'">' + esc(cat) + '</span>'
-      : '<span class="cat-pill p-none">—</span>';
-
-    // Avatar: photo if available, otherwise colored initials
-    var avHtml;
-    if (c.liPhoto) {
-      avHtml = '<div class="c-avatar"><img src="'+c.liPhoto+'" alt=""></div>';
-    } else {
-      avHtml = '<div class="c-avatar" style="background:'+avatarColor(email)+'">'+initials(name)+'</div>';
-    }
-
-    // Keyword pills — which keywords matched this contact
-    var kwPills = '';
-    if (hasKw && score > 0) {
-      var matchedKws = keywords.filter(function(kw) {
-        var subj = (c['last subject'] || '').toLowerCase();
-        return subj.includes(kw.toLowerCase());
-      });
-      if (matchedKws.length > 0) {
-        kwPills = '<div class="c-kw-pills">'
-          + matchedKws.slice(0,3).map(function(kw){ return '<span class="c-kw-pill">'+esc(kw)+'</span>'; }).join('')
-          + '</div>';
-      }
-    }
-
-    // Notes preview OR last subject in the whitespace
-    var extraLine = '';
-    if (c.notes && c.notes.trim()) {
-      extraLine = '<div class="c-extra c-note">📝 ' + esc(c.notes.substring(0,80)) + (c.notes.length>80?'…':'') + '</div>';
-    } else if (!hasKw && c['last subject']) {
-      // No keywords? Show last subject instead of empty space
-      extraLine = '<div class="c-extra c-subj">✉ ' + esc(c['last subject'].substring(0,80)) + (c['last subject'].length>80?'…':'') + '</div>';
-    }
-
-    // Score column: hide score number when no keywords active
-    var scoreHtml = hasKw
-      ? '<div class="c-score"><div class="sc-n">' + score + '</div><div class="sc-l">score</div></div>'
-      : '<div class="c-score"><div class="sc-n" style="font-size:11px;color:var(--sage)">—</div><div class="sc-l">score</div></div>';
-
-    return '<div class="c-card' + (cat==='Exclude'?' excluded':'') + '" onclick="openContact('+i+')">'
-      + avHtml
-      + '<div class="c-info">'
-        + '<div class="c-name">' + esc(name) + '</div>'
-        + '<div class="c-email">' + esc(email) + '</div>'
-        + (co ? '<div class="c-co">' + esc(co) + '</div>' : '')
-        + (c.liTitle ? '<div class="c-co" style="color:var(--g600)">' + esc(c.liTitle) + '</div>' : '')
-        + extraLine
-        + kwPills
-      + '</div>'
-      + scoreHtml
-      + '<div class="c-meta">'
-        + '<div class="c-emails">' + count + ' emails</div>'
-        + '<div class="c-date">' + (last ? last.slice(0,10) : '—') + '</div>'
-        + (aLbl ? '<div class="act-ind"><div class="pulse ' + pCls + '"></div>' + aLbl + '</div>' : '')
-      + '</div>'
-      + catHtml
-      + '</div>';
-  }).join('');
-}
-
-function updateStats() {
-  var now    = new Date();
-  var ninety = new Date(now - 90 * 864e5);
-  var active = allContacts.filter(function(c) { return c['last contact'] && new Date(c['last contact']) > ninety; }).length;
-  var scores = allContacts.map(function(c) { return parseInt(c['keyword score']||0); });
-  var top    = scores.length ? Math.max.apply(null, scores) : 0;
-  var avg    = scores.length ? Math.round(scores.reduce(function(a,b){return a+b;},0)/scores.length) : 0;
-  document.getElementById('sTotal').textContent   = allContacts.length || '—';
-  document.getElementById('sShowing').textContent = filtered.length    || '—';
-  document.getElementById('sActive').textContent  = active             || '—';
-  document.getElementById('sTop').textContent     = top                || '—';
-  document.getElementById('sAvg').textContent     = avg                || '—';
-}
-
-function showStateBox(type, ttl, sub) {
-  var box = document.getElementById('stateBox');
-  document.getElementById('cGrid').innerHTML = '';
-  document.getElementById('resCount').textContent = '';
-  if (type === 'loading') {
-    box.innerHTML = '<div class="spinner"></div><div class="state-ttl" style="margin-top:10px">'+esc(ttl)+'</div><div class="state-sub">'+esc(sub||'')+'</div>';
-  } else {
-    box.innerHTML = '<div class="state-ico">'+(type==='error'?'⚠️':'🔍')+'</div><div class="state-ttl">'+esc(ttl)+'</div><div class="state-sub">'+esc(sub||'')+'</div>';
-  }
-  box.style.display = 'flex';
-}
-
-function showLearning(on, txt) {
-  var pill = document.getElementById('learningPill');
-  pill.style.display = on ? 'flex' : 'none';
-  if (txt) document.getElementById('learningTxt').textContent = txt;
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SECTION 7: CONTACT MODAL
-// ════════════════════════════════════════════════════════════════════
-
-function openContact(idx) {
-  activeContact = filtered[idx];
-  var c = activeContact, email = c.email || '', name = c.name || email;
-  var av = document.getElementById('mAv');
-  if (c.liPhoto) { av.innerHTML = '<img src="'+c.liPhoto+'" alt="">'; }
-  else { av.textContent = initials(name); av.style.background = avatarColor(email); }
-  document.getElementById('mName').textContent   = name;
-  document.getElementById('mEmail').textContent  = email;
-  document.getElementById('mCo').textContent     = c.company || '';
-  document.getElementById('mScore').textContent  = c['keyword score'] || 0;
-  document.getElementById('mEmails').textContent = c['email count']   || 0;
-  document.getElementById('mFirst').textContent  = (c['first contact'] || '—').slice(0,10);
-  document.getElementById('mLast').textContent   = (c['last contact']  || '—').slice(0,10);
-  document.getElementById('mNotes').value        = c.notes  || '';
-  document.getElementById('mLIUrl').value        = c.liUrl  || '';
-  var liLink = document.getElementById('mLI');
-  if (c.liUrl) { liLink.href = c.liUrl; liLink.style.display = 'inline-flex'; }
-  else { liLink.style.display = 'none'; }
-  var ai = c['ai summary'] || '';
-  document.getElementById('mAiBox').style.display = ai ? 'block' : 'none';
-  if (ai) document.getElementById('mAiTxt').textContent = ai;
-  selectedCat = (c.classification || '').trim();
-  buildCatGrid();
-  showTab('details', document.querySelector('.mo-tab'));
-  openModal('contactModal');
-}
-
-function buildCatGrid() {
-  document.getElementById('mCatGrid').innerHTML = cats.map(function(cat) {
-    var sel = selectedCat === cat.name;
-    return '<button class="cat-opt'+(sel?' selected':'')+'" style="background:'+cat.bg+';color:'+cat.color+';border-color:'+cat.bg+'" onclick="selectCat(\''+cat.name+'\')">' + esc(cat.name) + '</button>';
-  }).join('');
-}
-
-function selectCat(name) {
-  selectedCat = selectedCat === name ? '' : name;
-  document.querySelectorAll('.cat-opt').forEach(function(b) {
-    b.classList.toggle('selected', b.textContent.trim() === selectedCat);
-  });
-}
-
-async function saveContact() {
-  if (!activeContact) return;
-  var email = activeContact.email;
-  var notes = document.getElementById('mNotes').value;
-  var liUrl = document.getElementById('mLIUrl').value.trim();
-  userCats[email]  = selectedCat;
-  userNotes[email] = notes;
-  localStorage.setItem('gcrm_cats',  JSON.stringify(userCats));
-  localStorage.setItem('gcrm_notes', JSON.stringify(userNotes));
-  activeContact.classification = selectedCat;
-  activeContact.notes = notes;
-  activeContact.liUrl = liUrl;
-  var master = allContacts.find(function(x) { return x.email === email; });
-  if (master) { master.classification = selectedCat; master.notes = notes; master.liUrl = liUrl; }
-  await saveContactToFirebase(activeContact);
-  closeModal('contactModal');
-  filterLocal();
-  showToast('✓ Contact saved');
-  if (document.getElementById('toggleGContacts').checked && selectedCat && selectedCat !== 'Exclude') {
-    try {
-      await gFetch('https://people.googleapis.com/v1/people:createContact', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          names: [{ givenName: activeContact.name.split(' ')[0]||'', familyName: activeContact.name.split(' ').slice(1).join(' ')||'' }],
-          emailAddresses: [{ value: email }],
-          organizations: activeContact.company ? [{ name: activeContact.company }] : [],
-          biographies: [{ value: 'GCRM: '+selectedCat+(notes?'\n'+notes:'') }],
-          urls: liUrl ? [{ value: liUrl, type: 'LinkedIn' }] : []
-        })
-      });
-      showToast('✓ Saved + synced to Google Contacts');
-    } catch(e) { /* skip */ }
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SECTION 8: LINKEDIN (AI-assisted suggestion, not LinkedIn API)
-// LinkedIn's API is not publicly available. We use AI to suggest
-// the most likely profile URL based on name/company/email domain.
-// The user MUST verify before confirming.
-// ════════════════════════════════════════════════════════════════════
-
-
-
-
-
-
-
-async function enrichLinkedIn() {
-  if (!activeContact) return;
-  var liUrl = document.getElementById('mLIUrl').value.trim();
-  if (!liUrl) { showToast('Paste a LinkedIn URL first'); return; }
-  activeContact.liUrl = liUrl;
-  var liLink = document.getElementById('mLI');
-  liLink.href = liUrl; liLink.style.display = 'inline-flex';
-  var master = allContacts.find(function(x) { return x.email === activeContact.email; });
-  if (master) master.liUrl = liUrl;
-  await saveContactToFirebase(activeContact);
-  renderAll();
-  showToast('✓ LinkedIn URL saved');
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SECTION 9: RECONNECT — reads real email history
-// ════════════════════════════════════════════════════════════════════
-
-function showTab(tab, btn) {
-  ['details','reconnect','templates'].forEach(function(t) {
-    var el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
-    if (el) el.style.display = t === tab ? 'block' : 'none';
-  });
-  document.querySelectorAll('.mo-tab').forEach(function(b) { b.classList.remove('active'); });
-  if (btn) btn.classList.add('active');
-  if (tab === 'reconnect') generateReconnect();
-  if (tab === 'templates') renderTpls();
-}
-
-async function generateReconnect() {
-  var box = document.getElementById('rcContent');
-  box.innerHTML = '<div class="gen-box"><div class="spinner" style="margin:0 auto 10px"></div><div style="font-size:13px;color:var(--sage)">Reading your email history with this contact…</div></div>';
-  var c = activeContact;
-  if (!c) { box.innerHTML = '<div style="padding:20px;color:var(--sage)">No contact selected</div>'; return; }
-
-  // Always load signature fresh from localStorage
-  var sig = localStorage.getItem('gcrm_sig') || '';
-
-  // Try to fetch real email history
-  var emailHistory = '';
-  var gotRealEmails = false;
-  if (!isDemo) {
-    try {
-      var searchQ = encodeURIComponent('from:' + c.email + ' OR to:' + c.email);
-      var listRes = await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5&q=' + searchQ);
-      if (listRes.ok) {
-        var listData = await listRes.json();
-        var msgIds = (listData.messages || []).slice(0, 5);
-        var snippets = [];
-        for (var m of msgIds) {
-          var mr = await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + m.id
-            + '?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date');
-          if (!mr.ok) continue;
-          var md = await mr.json();
-          var subj = getHdr(md, 'Subject') || '(no subject)';
-          var from = getHdr(md, 'From') || '';
-          var date = getHdr(md, 'Date') || '';
-          var snip = (md.snippet || '').substring(0, 250);
-          var direction = from.toLowerCase().includes(c.email.toLowerCase()) ? 'THEM → YOU' : 'YOU → THEM';
-          var dateStr   = date ? new Date(date).toLocaleDateString() : '';
-          snippets.push('[' + dateStr + ' ' + direction + '] Subject: "' + subj + '"\nPreview: ' + snip);
-        }
-        if (snippets.length > 0) {
-          emailHistory = snippets.join('\n\n---\n\n');
-          gotRealEmails = true;
-        }
-      }
-    } catch(e) { console.error('Email history fetch error:', e); }
-  }
-
-  if (!gotRealEmails) {
-    emailHistory = 'Last known email subject: "' + (c['last subject'] || 'unknown') + '"';
-  }
-
-  var prompt = 'You are helping a professional write reconnect emails to a business contact.\n\n'
-    + '=== CONTACT INFO ===\n'
-    + 'Name: ' + c.name + '\n'
-    + 'Company: ' + (c.company || 'unknown') + '\n'
-    + 'Title: ' + (c.liTitle || 'unknown') + '\n'
-    + 'Category: ' + (c.classification || 'contact') + '\n'
-    + 'Last contacted: ' + (c['last contact'] || 'unknown') + '\n'
-    + 'Shared topics/keywords: ' + keywords.join(', ') + '\n'
-    + 'Notes: ' + (c.notes || 'none') + '\n\n'
-    + '=== EMAIL HISTORY ===\n' + emailHistory + '\n\n'
-    + '=== SIGNATURE TO APPEND ===\n' + (sig || '[Signature not set — add in Settings]') + '\n\n'
-    + '=== TASK ===\n'
-    + 'Write exactly 3 reconnect email options. Each should be 3-5 sentences and reference specific details from the email history above. Append the full signature to each. Do NOT use generic placeholder phrases like "[specific topic]". Be specific and natural.\n\n'
-    + 'Return ONLY a valid JSON array with no markdown:\n'
-    + '[{"label":"Formal","subject":"...","body":"..."},{"label":"Friendly","subject":"...","body":"..."},{"label":"Brief","subject":"...","body":"..."}]';
-
-  try {
-    var res = await fetch(AI_PROXY_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:2000, messages:[{role:'user',content:prompt}] })
-    });
-    if (!res.ok) throw new Error('Proxy error ' + res.status);
-    var data = await res.json();
-    if (!data.content || !data.content[0]) throw new Error('No response');
-    var raw  = data.content[0].text.trim();
-    var jm   = raw.match(/\[[\s\S]*\]/);
-    if (!jm) throw new Error('No JSON array in response');
-    var opts = JSON.parse(jm[0]);
-    renderReconnect(opts);
-    if (!gotRealEmails) showToast('Tip: click ⟳ Sync Gmail for more personalised emails');
-  } catch(e) {
-    console.error('Reconnect error:', e);
-    var fn = (c.name || '').split(' ')[0] || 'there';
-    var fallbacks = [
-      { label:'Formal',   subject:'Following up — ' + keywords[0],
-        body: 'Dear ' + c.name + ',\n\nI hope this message finds you well. I was recently reflecting on our work together on "' + (c['last subject']||keywords[0]) + '" and wanted to reconnect.\n\nWould you be available for a brief call in the coming weeks?\n\n' + sig },
-      { label:'Friendly', subject:'Hey ' + fn + ' — checking in',
-        body: 'Hi ' + fn + ',\n\nIt\'s been a while! I was thinking about our last conversation regarding "' + (c['last subject']||keywords[0]) + '" and wanted to see how things are going on your end.\n\nWould love to catch up — are you free for a quick call?\n\n' + sig },
-      { label:'Brief',    subject:'Quick hello',
-        body: 'Hi ' + fn + ',\n\nHope you\'re well. Wanted to touch base on the ' + keywords[0] + ' front — anything we can help with?\n\n' + sig }
-    ];
-    renderReconnect(fallbacks);
-  }
-}
-
-function renderReconnect(opts) {
-  var box = document.getElementById('rcContent');
-  window._rcOpts = opts;
-  box.innerHTML = '<div class="rc-options">' + opts.map(function(opt, i) {
-    var gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&to='
-      + encodeURIComponent(activeContact.email)
-      + '&su=' + encodeURIComponent(opt.subject||'')
-      + '&body=' + encodeURIComponent(opt.body||'');
-    return '<div class="rc-card">'
-      + '<div class="rc-lbl">' + esc(opt.label) + '</div>'
-      + '<div style="font-size:12px;font-weight:600;color:var(--ink);margin-bottom:4px">Subject: ' + esc(opt.subject||'') + '</div>'
-      + '<div class="rc-txt">' + esc(opt.body||'').replace(/\n/g,'<br>') + '</div>'
-      + '<div class="rc-actions">'
-        + '<button class="btn-copy" onclick="copyMsg('+i+')">📋 Copy</button>'
-        + '<a href="'+gmailUrl+'" target="_blank"><button class="btn-gmail">Open in Gmail ↗</button></a>'
-      + '</div></div>';
-  }).join('') + '</div>';
-}
-
-function copyMsg(i) {
-  var opt = window._rcOpts[i];
-  if (!opt) return;
-  navigator.clipboard.writeText(opt.body).then(function() { showToast('✓ Copied to clipboard'); });
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SECTION 10: TEMPLATES
-// ════════════════════════════════════════════════════════════════════
-
-function renderTpls() {
-  var list = document.getElementById('tplList');
-  if (!templates.length) { list.innerHTML='<div style="font-size:12px;color:var(--sage);padding:12px;text-align:center">No templates yet</div>'; return; }
-  list.innerHTML = templates.map(function(t,i) {
-    return '<div class="tpl-item" onclick="useTpl('+i+')">'
-      + '<div class="tpl-name">'+esc(t.name)+'</div>'
-      + '<div class="tpl-prev">'+esc(t.body.substring(0,60))+'…</div>'
-      + '<button class="tpl-del" onclick="delTpl(event,'+i+')">×</button>'
-      + '</div>';
-  }).join('');
-}
-function showTplEditor() { document.getElementById('tplEditor').style.display='block'; document.getElementById('tplName').value=''; document.getElementById('tplBody').value=''; }
-function hideTplEditor() { document.getElementById('tplEditor').style.display='none'; }
-function saveTpl() {
-  var name=document.getElementById('tplName').value.trim();
-  var body=document.getElementById('tplBody').value.trim();
-  if(!name||!body){ showToast('Fill in both fields'); return; }
-  templates.push({name,body});
-  localStorage.setItem('gcrm_tpls',JSON.stringify(templates));
-  hideTplEditor(); renderTpls(); showToast('✓ Template saved');
-}
-function delTpl(e,i){ e.stopPropagation(); templates.splice(i,1); localStorage.setItem('gcrm_tpls',JSON.stringify(templates)); renderTpls(); }
-function useTpl(i) {
-  var t=templates[i]; if(!t||!activeContact) return;
-  var c=activeContact;
-  var sig=localStorage.getItem('gcrm_sig')||'';
-  var body=t.body
-    .replace(/\{name\}/g,c.name||'')
-    .replace(/\{company\}/g,c.company||'')
-    .replace(/\{topic\}/g,keywords[0]||'')
-    .replace(/\{title\}/g,c.liTitle||'');
-  if(sig && !body.includes(sig)) body+='\n\n'+sig;
-  window.open('https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(c.email)+'&body='+encodeURIComponent(body),'_blank');
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SECTION 11: CATEGORY EDITOR
-// ════════════════════════════════════════════════════════════════════
-
-function renderCatEdList() {
-  document.getElementById('catEdList').innerHTML = cats.map(function(cat,i) {
-    return '<div class="cat-ed-item">'
-      + '<input type="color" class="cat-ed-color" value="'+cat.color+'" onchange="cats['+i+'].color=this.value;cats['+i+'].bg=this.value+\'22\'">'
-      + '<input type="text" class="cat-ed-name" value="'+esc(cat.name)+'" onchange="cats['+i+'].name=this.value">'
-      + '<button class="cat-ed-del" onclick="delCat('+i+')">×</button>'
-      + '</div>';
-  }).join('');
-}
-function addCat() { cats.push({name:'New Category',color:'#155c2c',bg:'#d6f5e3',cls:'p-none'}); renderCatEdList(); }
-function delCat(i) { cats.splice(i,1); renderCatEdList(); }
-function saveCats() {
-  localStorage.setItem('gcrm_cats_custom',JSON.stringify(cats));
-  populateCatFilter(); buildCatGrid();
-  closeModal('catEditorModal'); showToast('✓ Categories saved');
-}
-function populateCatFilter() {
-  var opts = '<option value="">All Categories</option>' + cats.map(function(c){return '<option>'+esc(c.name)+'</option>';}).join('');
-  document.getElementById('filterCat').innerHTML = opts;
-  // Also populate header filter
-  var hdrSel = document.getElementById('hdrCatFilter');
-  if (hdrSel) hdrSel.innerHTML = opts;
-}
-
-function onHdrCatFilter() {
-  var val = document.getElementById('hdrCatFilter').value;
-  document.getElementById('filterCat').value = val;
-  filterLocal();
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SECTION 12: KEYWORDS & DATE PRESETS
-// ════════════════════════════════════════════════════════════════════
-
-function renderKeywords() {
-  document.getElementById('kwTags').innerHTML = keywords.map(function(kw,i) {
-    return '<span class="kw-tag active">'+esc(kw)+'<button class="kw-rm" onclick="rmKw('+i+',event)">×</button></span>';
-  }).join('');
-}
-function confirmKw() {
-  var val=document.getElementById('kwInput').value.trim().toLowerCase();
-  if(val && !keywords.includes(val)){
-    keywords.push(val);
-    localStorage.setItem('gcrm_kw',JSON.stringify(keywords));
-    renderKeywords();
-    closeModal('kwModal');
-    showToast('✓ Keyword "'+val+'" added — click ↺ Full Rescan to apply to all history');
-  } else {
-    closeModal('kwModal');
-  }
-}
-function rmKw(i,e){
-  e.stopPropagation();
-  var removed = keywords[i];
-  keywords.splice(i,1);
-  localStorage.setItem('gcrm_kw',JSON.stringify(keywords));
-  renderKeywords();
-  showToast('✓ Keyword "'+removed+'" removed — click ↺ Full Rescan to apply');
-}
-
-function setPreset(p,el) {
-  var now=new Date(), from=new Date();
-  document.querySelectorAll('.preset').forEach(function(b){b.classList.remove('active');});
-  el.classList.add('active');
-  if(p==='1y') from.setFullYear(now.getFullYear()-1);
-  else if(p==='2y') from.setFullYear(now.getFullYear()-2);
-  else if(p==='5y') from.setFullYear(now.getFullYear()-5);
-  else from=new Date('2000-01-01');
-  document.getElementById('dateFrom').value=from.toISOString().slice(0,10);
-  document.getElementById('dateTo').value=now.toISOString().slice(0,10);
-  filterLocal();
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SECTION 13: SETTINGS — with "Import signature from Gmail"
-// ════════════════════════════════════════════════════════════════════
-
-function loadSettings() {
-  var sig=localStorage.getItem('gcrm_sig')||'';
-  document.getElementById('sigArea').value=sig;
-  signature=sig;
-}
-function saveSettings() {
-  signature=document.getElementById('sigArea').value.trim();
-  localStorage.setItem('gcrm_sig',signature);
-  closeModal('settingsModal');
-  showToast('✓ Settings saved');
-}
-
-async function importSignatureFromGmail() {
-  showToast('⏳ Fetching your last sent email…');
-  try {
-    var listRes=await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=3&labelIds=SENT');
-    if(!listRes.ok){ showToast('⚠ Could not access sent mail'); return; }
-    var listData=await listRes.json();
-    var msgs=(listData.messages||[]);
-    if(!msgs.length){ showToast('No sent emails found'); return; }
-    // extractText declared once outside loop
-    var sigBody = '';
-    var extractText = function(parts){
-      if(!parts) return;
-      parts.forEach(function(p){
-        if(p.mimeType==='text/plain'&&p.body&&p.body.data){
-          sigBody=atob(p.body.data.replace(/-/g,'+').replace(/_/g,'/'));
-        }
-        if(p.parts) extractText(p.parts);
-      });
-    };
-    for(var m of msgs){
-      var mr=await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+m.id+'?format=full');
-      if(!mr.ok) continue;
-      var md=await mr.json();
-      sigBody='';
-      if(md.payload&&md.payload.body&&md.payload.body.data){
-        sigBody=atob(md.payload.body.data.replace(/-/g,'+').replace(/_/g,'/'));
-      } else { extractText(md.payload&&md.payload.parts); }
-      var body=sigBody;
-      if(!body) continue;
-      // Look for sig after '--' separator
-      var lines=body.split('\n');
-      var sigStart=-1;
-      for(var j=0;j<lines.length;j++){
-        if(lines[j].trim()==='--'||lines[j].trim()==='—'){ sigStart=j+1; break; }
-      }
-      var sig='';
-      if(sigStart>-1){ sig=lines.slice(sigStart).join('\n').trim(); }
-      else {
-        // Fallback: last block of non-empty lines
-        var nonEmpty=lines.filter(function(l){return l.trim();});
-        sig=nonEmpty.slice(-6).join('\n').trim();
-      }
-      if(sig&&sig.length>10){
-        // Clean up email quote markers (> at line start) and extra whitespace
-        sig = sig.split('\n')
-          .map(function(l){ return l.replace(/^[>\s]+/, '').trimEnd(); })
-          .filter(function(l,i,arr){
-            // Remove consecutive blank lines
-            return !(l==='' && arr[i-1]==='');
-          })
-          .join('\n')
-          .trim();
-        document.getElementById('sigArea').value=sig;
-        showToast('✓ Signature imported — click Save Settings to apply');
-        return;
-      }
-    }
-    showToast('Could not detect signature — paste it manually in the box above');
-  } catch(e){ console.error('Sig import error:',e); showToast('⚠ Import failed — paste signature manually'); }
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SECTION 14: EXPORT
-// ════════════════════════════════════════════════════════════════════
-
-function openExport() {
-  var h=['Name','Email','Company','Keyword Score','Email Count','First Contact','Last Contact','Category','Notes','LinkedIn'];
-  var rows=filtered.map(function(c){
-    return [c.name,c.email,c.company||'',c['keyword score']||0,c['email count']||0,
-            c['first contact']||'',c['last contact']||'',c.classification||'',c.notes||'',c.liUrl||'']
-      .map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(',');
-  });
-  document.getElementById('exportArea').value=h.join(',')+'\n'+rows.join('\n');
-  openModal('exportModal');
-}
-function dlCSV() {
-  var a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([document.getElementById('exportArea').value],{type:'text/csv'}));
-  a.download='gcrm_'+new Date().toISOString().slice(0,10)+'.csv';
-  a.click();
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SECTION 15: DEMO MODE
-// ════════════════════════════════════════════════════════════════════
-
-function enterDemo() {
-  isDemo=true;
-  allContacts=[
-    {name:'James Thornton',    email:'jthornton@aecom.com',              company:'AECOM',            'keyword score':142,'email count':28,'first contact':'2019-03-12','last contact':'2026-03-15','last subject':'Re: In Situ Remediation Proposal Phase 2',          classification:'Employee',      notes:'Senior PM on all major bids',liTitle:'Senior Project Manager'},
-    {name:'Sarah Mitchell',    email:'smitchell@tetratech.com',          company:'Tetra Tech',        'keyword score':98, 'email count':19,'first contact':'2020-01-08','last contact':'2026-02-28','last subject':'BioLogix field trial results',                    classification:'Top Client',    notes:'Lead TetraTech contact',liTitle:'Director of Environmental Services'},
-    {name:'Don Kowalski',      email:'don@w2f.ca',                       company:'W2F',               'keyword score':87, 'email count':35,'first contact':'2018-06-20','last contact':'2026-03-30','last subject':'Project proposal follow-up',                      classification:'Top Client',    notes:'Long-standing client since 2018'},
-    {name:'Gavin Overbeeke',   email:'goverbeeke@aelenv.com',            company:'AEL',               'keyword score':79, 'email count':22,'first contact':'2019-11-04','last contact':'2026-04-01','last subject':'BioLogix partnership agreement',                  classification:'Partner',       notes:'Co-authored BioLogix field trials',liTitle:'Environmental Engineer'},
-    {name:'Julie Greer',       email:'jgreer@genomealberta.ca',          company:'Genome Alberta',    'keyword score':67, 'email count':14,'first contact':'2021-05-17','last contact':'2026-01-26','last subject':'In Situ funding discussion',                      classification:'Prospect',      notes:'Genome Alberta funding interest'},
-    {name:'Keith Fraser',      email:'fraser.keith@aecom.com',           company:'AECOM',             'keyword score':61, 'email count':16,'first contact':'2022-09-01','last contact':'2025-11-27','last subject':'Ex Situ project proposal review',                 classification:'Client',        notes:'AECOM Calgary office'},
-    {name:'Marcus Reid',       email:'mreid@gov.ab.ca',                  company:'Alberta Environment','keyword score':24,'email count':7, 'first contact':'2020-11-22','last contact':'2025-06-15','last subject':'Regulatory compliance discussion',                classification:'Government',    notes:'Alberta Environment contact'},
-    {name:'Michael Lawrenchuk',email:'mlawrenchuk@foxlakecreenation.com',company:'Fox Lake Cree Nation','keyword score':48,'email count':44,'first contact':'2023-01-15','last contact':'2026-01-15','last subject':'Environmental stewardship project',             classification:'First Nations', notes:'Fox Lake Cree Nation representative'},
-  ];
-  showApp('Demo User','');
-  renderAll();
-  showToast('✓ Demo mode — showing sample data');
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SECTION 16: IMPACT COUNTERS (landing page animation)
-// ════════════════════════════════════════════════════════════════════
-
-function animateImpactCounters() {
-  var targets={impactUsers:1,impactCleanups:1,impactContacts:606};
-  Object.keys(targets).forEach(function(id){
-    var el=document.getElementById(id); if(!el) return;
-    var target=targets[id],current=0,step=Math.ceil(target/40);
-    var iv=setInterval(function(){ current=Math.min(current+step,target); el.textContent=current; if(current>=target) clearInterval(iv); },40);
-  });
-}
-
-// ════════════════════════════════════════════════════════════════════
-// SECTION 17: UTILITIES
-// ════════════════════════════════════════════════════════════════════
-
-function logoFallback(img) {
-  var wrapper = img.parentElement;
-  var color = wrapper.getAttribute('data-fb') || '#155c2c';
-  var ini   = wrapper.getAttribute('data-ini') || '?';
-  wrapper.outerHTML = '<div class="c-avatar" style="background:'+color+'">'+ini+'</div>';
-}
-
-function getHdr(msg,name){
-  var h=((msg.payload&&msg.payload.headers)||[]).find(function(h){return h.name===name;});
-  return h?h.value:'';
-}
-function isSpamEmail(email){
-  return SPAM_PREFIXES.some(function(p){ return email.startsWith(p)||email.includes(p); });
-}
-function extractCo(email){
-  var d=email.split('@')[1]||'';
-  if(PERSONAL_DOMAINS.includes(d)) return 'Personal';
-  var p=d.split('.');
-  return p[0].charAt(0).toUpperCase()+p[0].slice(1);
-}
-function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id){ document.getElementById(id).classList.remove('open'); }
-function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function showToast(msg){
-  var t=document.getElementById('toast');
-  t.textContent=msg; t.classList.add('show');
-  clearTimeout(t._t); t._t=setTimeout(function(){ t.classList.remove('show'); },3500);
-}
-
-// ── INIT ─────────────────────────────────────────────────────────────
-document.getElementById('dateTo').value=new Date().toISOString().slice(0,10);
-setTimeout(initAuth, 500);
-</script>
-</body>
-</html>
+// ══════════════
