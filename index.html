@@ -692,29 +692,32 @@ function initAuth() {
     _tokenExpiry = cachedExpiry;
   }
 
-  // Handle the redirect result (called after Google redirects back to our page)
+  // Handle redirect result FIRST, then watch auth state
+  // This order is critical — getRedirectResult must resolve before onAuthStateChanged
   fb.getRedirectResult(fb.auth).then(function(result) {
     if (result && result.user) {
-      // Successfully signed in via redirect — user is now set
-      // onAuthStateChanged below will fire and show the app
+      // Came back from Google redirect successfully
+      console.log('Redirect sign-in successful:', result.user.email);
     }
   }).catch(function(err) {
-    if (err.code !== 'auth/no-auth-event') {
+    console.error('Redirect result error:', err.code, err.message);
+    if (err.code !== 'auth/no-auth-event' && err.code !== 'auth/null-user') {
       showToast('⚠ Sign in failed: ' + err.message);
     }
-  });
-
-  fb.onAuthStateChanged(fb.auth, function(user) {
-    if (user) {
-      currentUser = user;
-      showApp(user.displayName || user.email, user.photoURL);
-      loadFromFirebase();
-      if (!_gmailToken) {
-        setTimeout(function() { ensureGmailToken().catch(function(){}); }, 2000);
+  }).finally(function() {
+    // Only set up auth state listener AFTER redirect result is processed
+    fb.onAuthStateChanged(fb.auth, function(user) {
+      if (user) {
+        currentUser = user;
+        showApp(user.displayName || user.email, user.photoURL);
+        loadFromFirebase();
+        if (!_gmailToken) {
+          setTimeout(function() { ensureGmailToken().catch(function(){}); }, 2000);
+        }
+      } else {
+        showLanding();
       }
-    } else {
-      showLanding();
-    }
+    });
   });
 }
 
