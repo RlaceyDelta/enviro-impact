@@ -375,10 +375,39 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
   </header>
 
   <div class="srch-panel">
+    <!-- AI Command Bar -->
+    <div id="aiCmdBar" style="margin-bottom:10px;display:flex;gap:8px;align-items:center">
+      <div style="position:relative;flex:1">
+        <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:14px">✦</span>
+        <input type="text" id="aiCmdInput" placeholder='Ask AI: "find everyone I discussed Australia with" or "draft email to oil sands contacts"…'
+          style="width:100%;padding:10px 14px 10px 36px;border:2px solid var(--g400);border-radius:var(--r);font-size:13px;font-family:'Outfit',sans-serif;outline:none;background:#fff;color:var(--ink);"
+          onkeydown="if(event.key==='Enter')runAiCmd()">
+      </div>
+      <button onclick="runAiCmd()" style="padding:10px 18px;background:var(--g600);color:#fff;border:none;border-radius:var(--r);font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;white-space:nowrap;">Ask AI</button>
+    </div>
+    <!-- AI Results -->
+    <div id="aiResults" style="display:none;margin-bottom:10px;padding:12px 14px;background:linear-gradient(135deg,var(--g50),#f0fdf4);border:1px solid var(--g200);border-radius:var(--r)">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--g500);margin-bottom:6px">✦ AI Response</div>
+      <div id="aiResultsTxt" style="font-size:13px;color:var(--earth);line-height:1.65;white-space:pre-wrap"></div>
+      <div id="aiDraftBox" style="display:none;margin-top:10px">
+        <textarea id="aiDraftTxt" style="width:100%;min-height:120px;padding:10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:'Outfit',sans-serif;outline:none;resize:vertical;color:var(--ink);background:#fff"></textarea>
+        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
+          <input type="text" id="aiDraftTo" placeholder="To: email@example.com (or leave blank to send to matched contacts)"
+            style="flex:1;min-width:200px;padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:'Outfit',sans-serif;outline:none;color:var(--ink);">
+          <input type="text" id="aiDraftSubject" placeholder="Subject line"
+            style="flex:1;min-width:160px;padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:'Outfit',sans-serif;outline:none;color:var(--ink);">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button onclick="copyAiDraft()" style="padding:6px 14px;background:var(--g100);color:var(--g700);border:none;border-radius:8px;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">📋 Copy</button>
+          <button onclick="sendAiDraft()" style="padding:6px 18px;background:var(--g600);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">✉ Send Email</button>
+          <button onclick="document.getElementById('aiResults').style.display='none'" style="padding:6px 14px;background:transparent;color:var(--sage);border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">Dismiss</button>
+        </div>
+      </div>
+    </div>
     <div class="srch-row">
       <div class="srch-wrap">
         <svg class="srch-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" id="mainSearch" placeholder="Search contacts or type any term to search Gmail…" oninput="onSearch()">
+        <input type="text" id="mainSearch" placeholder="Filter contacts by name, email, company…" oninput="onSearch()">
       </div>
       <select class="flt" id="filterCat" onchange="filterLocal()">
         <option value="">All Categories</option>
@@ -658,7 +687,12 @@ var signature = localStorage.getItem('gcrm_sig') || '';
 var AVATAR_COLORS = ['#155c2c','#1e40af','#9a3412','#5b21b6','#075985','#92400e','#3730a3','#166534'];
 var SPAM_PREFIXES = ['noreply','no-reply','donotreply','mailer-daemon','postmaster',
                      'newsletter','unsubscribe','bounce','notification','marketing',
-                     'alerts@','support@','info@','help@','hello@','contact@','team@'];
+                     'alerts@','support@','info@','help@','hello@','contact@','team@',
+                     'reply@','auto@','automated','billing@','invoice@','receipts@',
+                     'orders@','feedback@','survey@','news@','announce','digest@'];
+var SPAM_DOMAINS  = ['crm.wix.com','sendgrid','mailchimp','constantcontact','hubspot',
+                     'amazonses','mailgun','postmark','sparkpost','mandrillapp','nifty.com'];
+var SPAM_PATTERNS = [/^\d{6,}@/,/^[a-f0-9]{8}-[a-f0-9]{4}/,/\.edu\.(tw|in|cn|br)$/i];
 var PERSONAL_DOMAINS = ['gmail.com','hotmail.com','yahoo.com','outlook.com','icloud.com','live.com','me.com','msn.com'];
 
 // ════════════════════════════════════════════════════════════════════
@@ -1261,11 +1295,14 @@ function filterLocal() {
     if (showF === 'visible'  && isX)  return false;
     if (showF === 'excluded' && !isX) return false;
     if (catF  && cat !== catF)        return false;
+    // Hide ghost contacts (0 emails, no classification) unless searching
+    if (!q && !catF && parseInt(c['email count']||0) === 0 && !cat) return false;
     var lc = c['last contact'] || '';
     if (dateFrom && lc && lc < dateFrom) return false;
     if (dateTo   && lc && lc > dateTo)   return false;
     if (q) {
-      var hay = [c.name, c.email, c.company||'', c.notes||'', c['last subject']||''].join(' ').toLowerCase();
+      var hay = [c.name, c.email, c.company||'', c.notes||'', c['last subject']||'',
+                 (c.email.split('@')[1]||'').replace(/\..+/,'')].join(' ').toLowerCase();
       if (hay.indexOf(q) < 0) return false;
     }
     return true;
@@ -1637,7 +1674,8 @@ function renderReconnect(opts) {
       + '<div class="rc-txt">' + esc(opt.body||'').replace(/\n/g,'<br>') + '</div>'
       + '<div class="rc-actions">'
         + '<button class="btn-copy" onclick="copyMsg('+i+')">📋 Copy</button>'
-        + '<a href="'+gmailUrl+'" target="_blank"><button class="btn-gmail">Open in Gmail ↗</button></a>'
+        + '<button class="btn-gmail" onclick="sendReconnect('+i+')">✉ Send</button>'
+        + '<a href="'+gmailUrl+'" target="_blank"><button class="btn-copy">Open in Gmail ↗</button></a>'
       + '</div></div>';
   }).join('') + '</div>';
 }
@@ -1646,6 +1684,23 @@ function copyMsg(i) {
   var opt = window._rcOpts[i];
   if (!opt) return;
   navigator.clipboard.writeText(opt.body).then(function() { showToast('✓ Copied to clipboard'); });
+}
+
+async function sendReconnect(i) {
+  var opt = window._rcOpts[i];
+  if (!opt || !activeContact) return;
+  var to      = activeContact.email;
+  var subject = opt.subject || '';
+  var body    = opt.body    || '';
+  if (!confirm('Send "' + subject + '" to ' + to + '?')) return;
+  showToast('⏳ Sending…');
+  var ok = await sendGmailMessage(to, subject, body);
+  if (ok) {
+    showToast('✓ Email sent to ' + to);
+    closeModal('contactModal');
+  } else {
+    showToast('⚠ Send failed — check Gmail access and try Sync Gmail');
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1899,7 +1954,14 @@ function getHdr(msg,name){
   return h?h.value:'';
 }
 function isSpamEmail(email){
-  return SPAM_PREFIXES.some(function(p){ return email.startsWith(p)||email.includes(p); });
+  if(SPAM_PREFIXES.some(function(p){ return email.startsWith(p)||email.includes(p); })) return true;
+  var domain = email.split('@')[1] || '';
+  if(SPAM_DOMAINS.some(function(d){ return domain.includes(d); })) return true;
+  if(SPAM_PATTERNS.some(function(r){ return r.test(email); })) return true;
+  // Block obviously random/numeric local parts
+  var local = email.split('@')[0];
+  if(/^\d+$/.test(local) && local.length > 6) return true;
+  return false;
 }
 function extractCo(email){
   var d=email.split('@')[1]||'';
@@ -1914,6 +1976,164 @@ function showToast(msg){
   var t=document.getElementById('toast');
   t.textContent=msg; t.classList.add('show');
   clearTimeout(t._t); t._t=setTimeout(function(){ t.classList.remove('show'); },3500);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// AI COMMAND BAR
+// ════════════════════════════════════════════════════════════════════
+
+async function runAiCmd() {
+  var cmd = document.getElementById('aiCmdInput').value.trim();
+  if (!cmd) return;
+
+  var resultsBox = document.getElementById('aiResults');
+  var resultsTxt = document.getElementById('aiResultsTxt');
+  var draftBox   = document.getElementById('aiDraftBox');
+  var draftTxt   = document.getElementById('aiDraftTxt');
+
+  resultsBox.style.display = 'block';
+  draftBox.style.display   = 'none';
+  resultsTxt.textContent   = '✦ Thinking…';
+
+  // Build a compact contact summary for AI context (top 200 by email count)
+  var topContacts = allContacts
+    .filter(function(c){ return parseInt(c['email count']||0) > 0; })
+    .sort(function(a,b){ return parseInt(b['email count']||0) - parseInt(a['email count']||0); })
+    .slice(0, 200)
+    .map(function(c){
+      return [c.name, '<'+c.email+'>', c.company||'', c.classification||'',
+              'emails:'+c['email count'], 'last:'+c['last contact'],
+              c['last subject']?'"'+c['last subject'].substring(0,60)+'"':'',
+              c.notes||''].filter(Boolean).join(' | ');
+    }).join('\n');
+
+  var sig = localStorage.getItem('gcrm_sig') || '';
+
+  var prompt = 'You are an AI assistant for a business contact CRM called GCRM.\n\n'
+    + 'The user has ' + allContacts.length + ' contacts. Here are their top contacts:\n\n'
+    + topContacts + '\n\n'
+    + 'User command: "' + cmd + '"\n\n'
+    + 'Instructions:\n'
+    + '- If the user wants to FIND contacts: list the matching names and emails and explain why they match.\n'
+    + '- If the user wants to DRAFT an email: write a professional email draft. Use the signature below if provided.\n'
+    + '- If the user wants BOTH: find the contacts AND write a draft addressed to them.\n'
+    + '- Be specific and reference real details from the contact data above.\n'
+    + '- For email drafts, start with DRAFT: on its own line, then the email body.\n\n'
+    + 'Signature:\n' + (sig || '[No signature set]');
+
+  try {
+    var res = await fetch(AI_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    if (!res.ok) throw new Error('API error ' + res.status);
+    var data = await res.json();
+    var text = (data.content && data.content[0] && data.content[0].text) || 'No response';
+
+    // Check if response contains a draft
+    if (text.includes('DRAFT:')) {
+      var parts    = text.split('DRAFT:');
+      var analysis = parts[0].trim();
+      var draft    = parts[1].trim();
+
+      // Try to extract subject from draft (looks for Subject: line)
+      var subjMatch = draft.match(/^Subject:\s*(.+)$/im);
+      var subj = subjMatch ? subjMatch[1].trim() : '';
+      if (subjMatch) draft = draft.replace(subjMatch[0], '').trim();
+
+      // Extract matched contact emails from analysis text
+      var emailMatches = analysis.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+      var toField = document.getElementById('aiDraftTo');
+      var subjField = document.getElementById('aiDraftSubject');
+      if (emailMatches.length > 0) toField.value = emailMatches.join(', ');
+      if (subj) subjField.value = subj;
+
+      resultsTxt.textContent = analysis || 'Here is a draft email based on your contacts:';
+      draftTxt.value         = draft;
+      draftBox.style.display = 'block';
+    } else {
+      resultsTxt.textContent = text;
+      draftBox.style.display = 'none';
+    }
+  } catch(e) {
+    resultsTxt.textContent = '⚠ Error: ' + e.message;
+  }
+}
+
+function copyAiDraft() {
+  var txt = document.getElementById('aiDraftTxt').value;
+  navigator.clipboard.writeText(txt).then(function(){ showToast('✓ Draft copied to clipboard'); });
+}
+
+async function sendAiDraft() {
+  var to      = document.getElementById('aiDraftTo').value.trim();
+  var subject = document.getElementById('aiDraftSubject').value.trim();
+  var body    = document.getElementById('aiDraftTxt').value.trim();
+
+  if (!to)      { showToast('⚠ Add a recipient email address first'); return; }
+  if (!subject) { showToast('⚠ Add a subject line first'); return; }
+  if (!body)    { showToast('⚠ Email body is empty'); return; }
+
+  var recipients = to.split(',').map(function(e){ return e.trim(); }).filter(Boolean);
+
+  if (!confirm('Send this email to ' + recipients.length + ' recipient(s)?\n\n' + recipients.join('\n'))) return;
+
+  showToast('⏳ Sending…');
+  var sent = 0, failed = 0;
+  for (var recipient of recipients) {
+    var ok = await sendGmailMessage(recipient, subject, body);
+    if (ok) sent++; else failed++;
+  }
+  if (failed === 0) {
+    showToast('✓ Sent to ' + sent + ' recipient' + (sent > 1 ? 's' : ''));
+    document.getElementById('aiResults').style.display = 'none';
+  } else {
+    showToast('⚠ Sent ' + sent + ', failed ' + failed + ' — check Gmail access');
+  }
+}
+
+// Send a single email via Gmail API
+async function sendGmailMessage(to, subject, body) {
+  try {
+    var token = await ensureGmailToken();
+    if (!token) { showToast('⚠ Gmail access needed — click Sync Gmail first'); return false; }
+
+    // Build RFC 2822 email
+    var fromName  = (currentUser && currentUser.displayName) || '';
+    var fromEmail = (currentUser && currentUser.email) || '';
+    var from      = fromName ? fromName + ' <' + fromEmail + '>' : fromEmail;
+    var email = [
+      'From: ' + from,
+      'To: ' + to,
+      'Subject: ' + subject,
+      'Content-Type: text/plain; charset=utf-8',
+      'MIME-Version: 1.0',
+      '',
+      body
+    ].join('\r\n');
+
+    // Base64url encode
+    var encoded = btoa(unescape(encodeURIComponent(email)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    var res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ raw: encoded })
+    });
+    return res.ok;
+  } catch(e) {
+    console.error('Send error:', e);
+    return false;
+  }
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────
