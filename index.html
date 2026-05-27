@@ -565,12 +565,13 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
         </div>
       </div>
       <div class="settings-section">
-        <div class="settings-title">AI Status</div>
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 0">
-          <button class="btn-copy" onclick="testAiProxy()" style="font-size:12px;padding:6px 14px">✦ Test AI Connection</button>
-          <div id="aiProxyStatus" style="font-size:12px;color:var(--sage)">Click to test</div>
+        <div class="settings-title">AI — Anthropic API Key</div>
+        <input type="password" class="sig-area" id="apiKeyInput" placeholder="sk-ant-..." style="min-height:auto;padding:10px 12px;font-family:'Outfit',sans-serif;font-size:13px;letter-spacing:.05em">
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <button class="btn-copy" onclick="testAiProxy()" style="font-size:12px;padding:6px 14px">✦ Test Connection</button>
+          <div id="aiProxyStatus" style="font-size:12px;color:var(--sage)">Enter key and test</div>
         </div>
-        <div style="font-size:11px;color:var(--sage);margin-top:2px">Proxy: <code style="font-size:10px;background:var(--g50);padding:2px 6px;border-radius:4px">https://ai-jhkerdwsbq-uc.a.run.app</code></div>
+        <div class="sig-hint">Get a free key at <strong>console.anthropic.com</strong> — stored locally in your browser only, never sent anywhere except Anthropic.</div>
       </div>
       <div class="settings-section">
         <div class="settings-title">Sync Settings</div>
@@ -651,7 +652,7 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
 var GOOGLE_CLIENT_ID = '726544492881-0t682k52jm1b2fsuq83hlid2ddqotruc.apps.googleusercontent.com';
 var GMAIL_SCOPE      = 'https://www.googleapis.com/auth/gmail.readonly';
 var CONTACTS_SCOPE   = 'https://www.googleapis.com/auth/contacts';
-var AI_PROXY_URL     = 'https://ai-jhkerdwsbq-uc.a.run.app';
+var AI_PROXY_URL     = 'https://api.anthropic.com/v1/messages'; // Direct Anthropic API
 
 // ── DEFAULT CATEGORIES ───────────────────────────────────────────────
 var DEFAULT_CATS = [
@@ -688,7 +689,8 @@ var userNotes = JSON.parse(localStorage.getItem('gcrm_notes') || '{}');
 var userCats  = JSON.parse(localStorage.getItem('gcrm_cats')  || '{}');
 var templates = JSON.parse(localStorage.getItem('gcrm_tpls')  || '[]');
 var cats      = JSON.parse(localStorage.getItem('gcrm_cats_custom') || JSON.stringify(DEFAULT_CATS));
-var signature = localStorage.getItem('gcrm_sig') || '';
+var signature   = localStorage.getItem('gcrm_sig')      || '';
+var anthropicKey = localStorage.getItem('gcrm_apikey') || '';
 
 var AVATAR_COLORS = ['#155c2c','#1e40af','#9a3412','#5b21b6','#075985','#92400e','#3730a3','#166534'];
 var SPAM_PREFIXES = ['noreply','no-reply','donotreply','mailer-daemon','postmaster',
@@ -979,17 +981,18 @@ async function startBackgroundSync() {
   bgSyncing = false;
 }
 
-// ── KEY FIX: fetchThreadContacts — subject=10pts, body=1pt ──────────
+// fetchThreadContacts — metadata+snippet only (fast), subject=10pts snippet=1pt
 async function fetchThreadContacts(threadId) {
   try {
-    // Fetch full thread bodies so we can do real scoring
     var res = await gFetch(
-      'https://gmail.googleapis.com/gmail/v1/users/me/threads/' + threadId + '?format=full'
+      'https://gmail.googleapis.com/gmail/v1/users/me/threads/' + threadId
+      + '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date'
     );
     if (!res.ok) return [];
-    var data = await res.json();
-    var msgs = data.messages || [];
-    var found = {};
+    var data    = await res.json();
+    var msgs    = data.messages || [];
+    var snippet = (data.snippet || '').toLowerCase();
+    var found   = {};
 
     msgs.forEach(function(msg) {
       var from    = getHdr(msg, 'From')    || '';
@@ -1005,18 +1008,14 @@ async function fetchThreadContacts(threadId) {
       var nameMatch = from.match(/^"?([^"<]+)"?\s*</);
       var name = nameMatch ? nameMatch[1].trim() : email.split('@')[0];
 
-      // Extract plain text body from full message
-      var bodyText = extractMsgBody(msg);
+      // subject=10pts per hit, snippet=1pt per hit — fast, no extra API calls
       var subjLower = subject.toLowerCase();
-      var bodyLower = bodyText.toLowerCase();
-
-      // SCORING: keyword in subject = 10pts each, keyword in body = 1pt each
       var score = 0;
       keywords.forEach(function(kw) {
         var re = new RegExp(kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
-        var subjHits = (subjLower.match(re) || []).length;
-        var bodyHits = (bodyLower.match(re) || []).length;
-        score += (subjHits * 10) + (bodyHits * 1);
+        var subjHits    = (subjLower.match(re) || []).length;
+        var snippetHits = (snippet.match(re)   || []).length;
+        score += (subjHits * 10) + (snippetHits * 1);
       });
 
       var d    = date ? new Date(date) : new Date();
@@ -1040,7 +1039,10 @@ async function fetchThreadContacts(threadId) {
       } else {
         found[email]['keyword score'] += score;
         if (dStr < found[email]['first contact']) found[email]['first contact'] = dStr;
-        if (dStr > found[email]['last contact'])  { found[email]['last contact'] = dStr; found[email]['last subject'] = subject; }
+        if (dStr > found[email]['last contact'])  {
+          found[email]['last contact'] = dStr;
+          found[email]['last subject'] = subject;
+        }
       }
     });
 
@@ -1048,21 +1050,6 @@ async function fetchThreadContacts(threadId) {
   } catch(e) {
     return [];
   }
-}
-
-// Decode plain-text body from Gmail full message payload
-function extractMsgBody(msg) {
-  var text = '';
-  function walk(part) {
-    if (!part) return;
-    if (part.mimeType === 'text/plain' && part.body && part.body.data) {
-      try { text += atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/')) + ' '; } catch(e) {}
-    }
-    if (part.parts) part.parts.forEach(walk);
-  }
-  if (msg.payload) walk(msg.payload);
-  if (!text && msg.snippet) text = msg.snippet; // fallback to snippet
-  return text;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1475,12 +1462,7 @@ async function generateReconnect() {
     + '=== TASK ===\nWrite exactly 3 reconnect email options. Each should be 3-5 sentences and reference specific details from the email history above. Append the full signature to each. Do NOT use generic placeholder phrases like "[specific topic]". Be specific and natural.\n\nReturn ONLY a valid JSON array with no markdown:\n[{"label":"Formal","subject":"...","body":"..."},{"label":"Friendly","subject":"...","body":"..."},{"label":"Brief","subject":"...","body":"..."}]';
 
   try {
-    var res = await fetch(AI_PROXY_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:2000, messages:[{role:'user',content:prompt}] })
-    });
-    if (!res.ok) throw new Error('Proxy error ' + res.status);
-    var data = await res.json();
+    var data = await callAI([{role:'user',content:prompt}], 2000);
     if (!data.content || !data.content[0]) throw new Error('No response');
     var raw = data.content[0].text.trim();
     var jm  = raw.match(/\[[\s\S]*\]/);
@@ -1623,8 +1605,22 @@ function setPreset(p,el) {
 // SECTION 12: SETTINGS
 // ════════════════════════════════════════════════════════════════════
 
-function loadSettings() { var sig=localStorage.getItem('gcrm_sig')||''; document.getElementById('sigArea').value=sig; signature=sig; }
-function saveSettings() { signature=document.getElementById('sigArea').value.trim(); localStorage.setItem('gcrm_sig',signature); closeModal('settingsModal'); showToast('✓ Settings saved'); }
+function loadSettings() {
+  var sig = localStorage.getItem('gcrm_sig') || '';
+  document.getElementById('sigArea').value = sig;
+  signature = sig;
+  var key = localStorage.getItem('gcrm_apikey') || '';
+  document.getElementById('apiKeyInput').value = key;
+  anthropicKey = key;
+}
+function saveSettings() {
+  signature    = document.getElementById('sigArea').value.trim();
+  anthropicKey = document.getElementById('apiKeyInput').value.trim();
+  localStorage.setItem('gcrm_sig',    signature);
+  localStorage.setItem('gcrm_apikey', anthropicKey);
+  closeModal('settingsModal');
+  showToast('✓ Settings saved');
+}
 
 async function importSignatureFromGmail() {
   showToast('⏳ Fetching your last sent email…');
@@ -1733,12 +1729,7 @@ async function runAiCmd() {
   var prompt = 'You are an AI assistant for a business contact CRM called GCRM.\n\nThe user has ' + allContacts.length + ' contacts. Here are their top contacts:\n\n' + topContacts + '\n\nUser command: "' + cmd + '"\n\nInstructions:\n- If the user wants to FIND contacts: list the matching names and emails and explain why they match.\n- If the user wants to DRAFT an email: write a professional email draft. Use the signature below if provided.\n- If the user wants BOTH: find the contacts AND write a draft addressed to them.\n- Be specific and reference real details from the contact data above.\n- For email drafts, start with DRAFT: on its own line, then the email body.\n\nSignature:\n' + (sig || '[No signature set]');
 
   try {
-    var res = await fetch(AI_PROXY_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
-    });
-    if (!res.ok) throw new Error('API error ' + res.status);
-    var data = await res.json();
+    var data = await callAI([{ role: 'user', content: prompt }], 1500);
     var text = (data.content && data.content[0] && data.content[0].text) || 'No response';
     if (text.includes('DRAFT:')) {
       var parts = text.split('DRAFT:'), analysis = parts[0].trim(), draft = parts[1].trim();
@@ -1777,26 +1768,45 @@ async function sendAiDraft() {
 // SECTION 17: TEST AI PROXY
 // ════════════════════════════════════════════════════════════════════
 
+// Call Anthropic API directly with stored key
+async function callAI(messages, maxTokens) {
+  var key = localStorage.getItem('gcrm_apikey') || '';
+  if (!key) throw new Error('No API key — add it in ⚙ Settings');
+  var res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type':         'application/json',
+      'x-api-key':            key,
+      'anthropic-version':    '2023-06-01',
+      'anthropic-dangerous-allow-browser': 'true'
+    },
+    body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens || 1000, messages: messages })
+  });
+  if (!res.ok) {
+    var err = await res.json().catch(function(){ return {}; });
+    throw new Error((err.error && err.error.message) || 'API error ' + res.status);
+  }
+  return res.json();
+}
+
 async function testAiProxy() {
   var statusEl = document.getElementById('aiProxyStatus');
+  // Save key first if user just typed it
+  var typed = document.getElementById('apiKeyInput').value.trim();
+  if (typed) { localStorage.setItem('gcrm_apikey', typed); anthropicKey = typed; }
   if (statusEl) statusEl.textContent = '⏳ Testing…';
   try {
-    var res = await fetch(AI_PROXY_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 20, messages: [{ role: 'user', content: 'Reply with just: OK' }] })
-    });
-    if (!res.ok) {
-      if (statusEl) statusEl.textContent = '❌ Error ' + res.status + ' — proxy may need redeployment';
-      showToast('⚠ AI proxy returned HTTP ' + res.status + '. Run: firebase deploy --only functions');
-      return;
-    }
-    var data = await res.json();
+    var data = await callAI([{ role: 'user', content: 'Reply with just: OK' }], 20);
     var reply = (data.content && data.content[0] && data.content[0].text) || '';
-    if (reply) { if (statusEl) statusEl.textContent = '✅ Connected — AI is working!'; showToast('✓ AI proxy is live and responding!'); }
-    else { if (statusEl) statusEl.textContent = '⚠ Reached proxy but got empty response'; }
+    if (reply) {
+      if (statusEl) statusEl.textContent = '✅ Connected — AI is working!';
+      showToast('✓ AI is live! Save Settings to keep the key.');
+    } else {
+      if (statusEl) statusEl.textContent = '⚠ Connected but empty response';
+    }
   } catch(e) {
-    if (statusEl) statusEl.textContent = '❌ Cannot reach proxy — ' + e.message;
-    showToast('⚠ AI proxy unreachable. It may need redeployment from your local machine.');
+    if (statusEl) statusEl.textContent = '❌ ' + e.message;
+    showToast('⚠ ' + e.message);
   }
 }
 
