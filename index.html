@@ -915,12 +915,12 @@ async function startBackgroundSync() {
   try {
     var token = await ensureGmailToken();
     if (!token) { showLearning(false); showToast('⚠ Gmail access needed'); bgSyncing = false; return; }
-    var kwQuery = keywords.length > 0 ? keywords.map(function(kw) { return '"' + kw + '"'; }).join(' OR ') : '';
+    // Always search by keywords — fast and targeted, never crawl everything
+    var kwQuery = keywords.length > 0 ? keywords.map(function(kw) { return '"' + kw + '"'; }).join(' OR ') : 'in:all';
     var lastSyncDate = localStorage.getItem('gcrm_lastSyncDate') || '';
     var isFirstSync  = !lastSyncDate;
-    var query = kwQuery;
-    if (!isFirstSync) query = (kwQuery ? kwQuery + ' ' : '') + 'after:' + lastSyncDate;
-    if (!query.trim()) query = 'in:all';
+    // Add date filter for incremental syncs
+    var query = isFirstSync ? kwQuery : kwQuery + ' after:' + lastSyncDate;
 
     var contactMap = {};
     allContacts.forEach(function(c) {
@@ -1581,13 +1581,15 @@ function confirmKw() {
   if(val && !keywords.includes(val)){
     keywords.push(val); localStorage.setItem('gcrm_kw',JSON.stringify(keywords));
     renderKeywords(); closeModal('kwModal');
-    showToast('✓ Keyword "'+val+'" added — click ↺ Full Rescan to apply to all history');
+    showToast('✓ Keyword "'+val+'" added');
+    rescoreAndRefresh();
   } else { closeModal('kwModal'); }
 }
 function rmKw(i,e){
   e.stopPropagation(); var removed=keywords[i];
   keywords.splice(i,1); localStorage.setItem('gcrm_kw',JSON.stringify(keywords));
-  renderKeywords(); showToast('✓ Keyword "'+removed+'" removed — click ↺ Full Rescan to apply');
+  renderKeywords(); showToast('✓ Keyword "'+removed+'" removed');
+  rescoreAndRefresh();
 }
 function setPreset(p,el) {
   var now=new Date(), from=new Date();
@@ -1847,6 +1849,33 @@ function openModal(id){ document.getElementById(id).classList.add('open'); if(id
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function showToast(msg){ var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(function(){ t.classList.remove('show'); },3500); }
+
+// rescoreAndRefresh — re-scores already-loaded contacts instantly from cached snippet/subject
+// then kicks off a background keyword-filtered sync to pick up any missing threads
+function rescoreAndRefresh() {
+  // Step 1: re-score everyone already in memory using current keywords
+  allContacts.forEach(function(c) {
+    var subjLower = (c['last subject'] || '').toLowerCase();
+    var score = 0;
+    keywords.forEach(function(kw) {
+      var re = new RegExp(kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
+      var subjHits = (subjLower.match(re) || []).length;
+      score += subjHits * 10;
+    });
+    // Keep existing body/snippet score contribution if we have it stored
+    c['keyword score'] = score;
+  });
+  renderAll();
+
+  // Step 2: kick off a fresh keyword-filtered sync in the background
+  if (!isDemo && _gmailToken) {
+    showToast('✓ Keywords updated — refreshing…');
+    localStorage.removeItem('gcrm_lastSyncDate');
+    startBackgroundSync();
+  } else if (!isDemo) {
+    showToast('✓ Keywords updated — click ⟳ Sync Gmail to refresh scores');
+  }
+}
 
 // ── INIT ─────────────────────────────────────────────────────────────
 document.getElementById('dateTo').value=new Date().toISOString().slice(0,10);
