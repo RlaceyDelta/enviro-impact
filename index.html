@@ -8,7 +8,7 @@
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged }
     from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
   import { getFirestore, doc, setDoc, getDoc, collection, getDocs, writeBatch, deleteDoc }
     from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
@@ -31,7 +31,7 @@
   provider.addScope('https://www.googleapis.com/auth/contacts');
 
   // Expose to global scope
-  window._firebase = { auth, db, provider, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
+  window._firebase = { auth, db, provider, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
     doc, setDoc, getDoc, collection, getDocs, writeBatch, deleteDoc };
 </script>
 <style>
@@ -316,6 +316,37 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
   .mo-stats{grid-template-columns:repeat(2,1fr);}
   .l-nav{padding:20px 24px;}
 }
+
+/* ── AI CHAT ── */
+.ai-chat-wrap{background:#fff;border:2px solid var(--g400);border-radius:var(--r);padding:12px 14px;margin-bottom:10px;}
+.ai-chat-msgs{max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px;scroll-behavior:smooth;}
+.ai-chat-msgs:empty{display:none;}
+.ai-msg-user{align-self:flex-end;background:var(--g700);color:#fff;padding:8px 13px;border-radius:14px 14px 3px 14px;font-size:13px;max-width:82%;word-break:break-word;}
+.ai-msg-ai{align-self:flex-start;background:var(--g50);border:1px solid var(--g200);padding:9px 13px;border-radius:3px 14px 14px 14px;font-size:13px;max-width:88%;color:var(--ink);line-height:1.65;word-break:break-word;}
+.ai-msg-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--g500);margin-bottom:4px;}
+.ai-chat-input{display:flex;gap:8px;align-items:center;}
+.ai-chat-input input{flex:1;padding:9px 14px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:'Outfit',sans-serif;outline:none;color:var(--ink);}
+.ai-chat-input input:focus{border-color:var(--g400);}
+.ai-send-btn{padding:9px 16px;background:var(--g600);color:#fff;border:none;border-radius:var(--r);font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;white-space:nowrap;}
+.ai-send-btn:hover{background:var(--g700);}
+.ai-clear-btn{padding:9px 12px;background:transparent;border:1.5px solid var(--border);border-radius:var(--r);font-size:12px;color:var(--sage);font-family:'Outfit',sans-serif;cursor:pointer;}
+.ai-clear-btn:hover{border-color:var(--g400);color:var(--g700);}
+
+/* AI contact selection */
+.ai-contact-select{background:var(--g50);border:1px solid var(--g200);border-radius:var(--r);padding:10px 12px;margin-bottom:8px;}
+.ai-select-hdr{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--g600);margin-bottom:8px;}
+.ai-contact-list{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+.ai-contact-card{display:flex;align-items:center;gap:7px;padding:6px 10px;background:#fff;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;transition:all .15s;user-select:none;}
+.ai-contact-card:hover{border-color:var(--g300);}
+.ai-contact-card.selected{border-color:var(--g500);background:var(--g50);}
+.ai-check{width:15px;height:15px;border-radius:3px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;flex-shrink:0;}
+.ai-contact-card.selected .ai-check{background:var(--g500);border-color:var(--g500);color:#fff;}
+.ai-bulk-row{display:flex;gap:7px;align-items:center;flex-wrap:wrap;}
+.ai-bulk-row input{flex:1;min-width:160px;padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:'Outfit',sans-serif;outline:none;color:var(--ink);}
+.ai-bulk-row input:focus{border-color:var(--g400);}
+.btn-sel-all{padding:5px 10px;background:var(--g100);color:var(--g700);border:none;border-radius:7px;font-size:11px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;white-space:nowrap;}
+.btn-email-sel{padding:7px 14px;background:var(--g600);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;white-space:nowrap;}
+.btn-email-sel:hover{background:var(--g700);}
 </style>
 </head>
 <body>
@@ -376,33 +407,24 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
   </header>
 
   <div class="srch-panel">
-    <!-- AI Command Bar -->
-    <div id="aiCmdBar" style="margin-bottom:10px;display:flex;gap:8px;align-items:center">
-      <div style="position:relative;flex:1">
-        <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:14px">✦</span>
-        <input type="text" id="aiCmdInput" placeholder='Ask AI: "find everyone I discussed Australia with" or "draft email to oil sands contacts"…'
-          style="width:100%;padding:10px 14px 10px 36px;border:2px solid var(--g400);border-radius:var(--r);font-size:13px;font-family:'Outfit',sans-serif;outline:none;background:#fff;color:var(--ink);"
-          onkeydown="if(event.key==='Enter')runAiCmd()">
+    <!-- AI Chat -->
+    <div class="ai-chat-wrap">
+      <div class="ai-chat-msgs" id="aiChatMsgs"></div>
+      <div id="aiContactSelect" class="ai-contact-select" style="display:none">
+        <div class="ai-select-hdr">✦ Matched contacts — select who to email</div>
+        <div class="ai-contact-list" id="aiContactList"></div>
+        <div class="ai-bulk-row">
+          <button class="btn-sel-all" onclick="selectAllAiContacts()">Select All</button>
+          <input type="text" id="aiEmailSubject" placeholder="Subject line…">
+          <textarea id="aiEmailBody" placeholder="Email body (or ask AI to draft one above)…" style="flex:2;min-width:200px;padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:'Outfit',sans-serif;outline:none;color:var(--ink);resize:vertical;min-height:60px;"></textarea>
+          <button class="btn-email-sel" onclick="emailSelectedContacts()">✉ Send to Selected</button>
+        </div>
       </div>
-      <button onclick="runAiCmd()" style="padding:10px 18px;background:var(--g600);color:#fff;border:none;border-radius:var(--r);font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;white-space:nowrap;">Ask AI</button>
-    </div>
-    <!-- AI Results -->
-    <div id="aiResults" style="display:none;margin-bottom:10px;padding:12px 14px;background:linear-gradient(135deg,var(--g50),#f0fdf4);border:1px solid var(--g200);border-radius:var(--r)">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--g500);margin-bottom:6px">✦ AI Response</div>
-      <div id="aiResultsTxt" style="font-size:13px;color:var(--earth);line-height:1.65;white-space:pre-wrap"></div>
-      <div id="aiDraftBox" style="display:none;margin-top:10px">
-        <textarea id="aiDraftTxt" style="width:100%;min-height:120px;padding:10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:'Outfit',sans-serif;outline:none;resize:vertical;color:var(--ink);background:#fff"></textarea>
-        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
-          <input type="text" id="aiDraftTo" placeholder="To: email@example.com (or leave blank to send to matched contacts)"
-            style="flex:1;min-width:200px;padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:'Outfit',sans-serif;outline:none;color:var(--ink);">
-          <input type="text" id="aiDraftSubject" placeholder="Subject line"
-            style="flex:1;min-width:160px;padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:'Outfit',sans-serif;outline:none;color:var(--ink);">
-        </div>
-        <div style="display:flex;gap:8px;margin-top:6px">
-          <button onclick="copyAiDraft()" style="padding:6px 14px;background:var(--g100);color:var(--g700);border:none;border-radius:8px;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">📋 Copy</button>
-          <button onclick="sendAiDraft()" style="padding:6px 18px;background:var(--g600);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">✉ Send Email</button>
-          <button onclick="document.getElementById('aiResults').style.display='none'" style="padding:6px 14px;background:transparent;color:var(--sage);border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer">Dismiss</button>
-        </div>
+      <div class="ai-chat-input">
+        <span style="font-size:15px;color:var(--g400);flex-shrink:0">✦</span>
+        <input type="text" id="aiCmdInput" placeholder='Ask AI anything — "who discussed Argentina?" or "draft a follow-up to my top clients"…' onkeydown="if(event.key==='Enter')runAiCmd()">
+        <button class="ai-send-btn" onclick="runAiCmd()">Send</button>
+        <button class="ai-clear-btn" onclick="clearAiChat()" title="Clear chat">↺</button>
       </div>
     </div>
     <div class="srch-row">
@@ -688,6 +710,11 @@ var isDemo        = false;
 var currentUser   = null;
 var bgSyncing     = false;
 
+// AI Chat state
+var aiChatHistory     = [];   // [{role:'user'|'assistant', content:'...'}]
+var aiMatchedContacts = [];   // contacts identified in last AI response
+var aiSelectedContacts = {};  // email → true/false
+
 // Gmail OAuth token state
 var _gmailToken   = null;
 var _tokenExpiry  = 0;
@@ -722,33 +749,36 @@ var PERSONAL_DOMAINS = ['gmail.com','hotmail.com','yahoo.com','outlook.com','icl
 function signIn() {
   var fb = window._firebase;
   if (!fb) { setTimeout(signIn, 300); return; }
-
-  // Single popup — Firebase handles both app auth and Gmail token in one shot
-  fb.signInWithPopup(fb.auth, fb.provider)
-    .then(function(result) {
-      var credential = fb.GoogleAuthProvider.credentialFromResult(result);
-      if (credential && credential.accessToken) {
-        _gmailToken  = credential.accessToken;
-        _tokenExpiry = Date.now() + 3500000; // ~58 min
-        sessionStorage.setItem('gcrm_token', _gmailToken);
-        sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
-      }
-    })
-    .catch(function(err) {
-      showToast('⚠ Sign in failed: ' + err.message);
-    });
+  // Redirect-based: no popup, works in all browsers, no third-party cookie issues
+  fb.signInWithRedirect(fb.auth, fb.provider)
+    .catch(function(err) { showToast('⚠ Sign in failed: ' + err.message); });
 }
 
 function initAuth() {
   var fb = window._firebase;
   if (!fb) { setTimeout(initAuth, 300); return; }
 
+  // Restore cached Gmail token
   var cachedToken  = sessionStorage.getItem('gcrm_token');
   var cachedExpiry = parseInt(sessionStorage.getItem('gcrm_token_exp') || '0');
   if (cachedToken && Date.now() < cachedExpiry - 120000) {
-    _gmailToken  = cachedToken;
-    _tokenExpiry = cachedExpiry;
+    _gmailToken = cachedToken; _tokenExpiry = cachedExpiry;
   }
+
+  // Pick up Gmail token from redirect sign-in result
+  fb.getRedirectResult(fb.auth)
+    .then(function(result) {
+      if (result && result.user) {
+        var cred = fb.GoogleAuthProvider.credentialFromResult(result);
+        if (cred && cred.accessToken) {
+          _gmailToken  = cred.accessToken;
+          _tokenExpiry = Date.now() + 3500000;
+          sessionStorage.setItem('gcrm_token', _gmailToken);
+          sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
+        }
+      }
+    })
+    .catch(function(err) { console.error('Redirect result error:', err); });
 
   fb.onAuthStateChanged(fb.auth, function(user) {
     if (user) {
@@ -1020,8 +1050,9 @@ async function startBackgroundSync() {
 
       for (var i = 0; i < threads.length; i += 5) {
         var chunk = threads.slice(i, i + 5);
+        var hasKwQuery = !!kwQuery;
         var results = await Promise.all(
-          chunk.map(function(t) { return fetchThreadContacts(t.id); })
+          chunk.map(function(t) { return fetchThreadContacts(t.id, hasKwQuery); })
         );
 
         results.forEach(function(threadContacts) {
@@ -1076,7 +1107,7 @@ async function startBackgroundSync() {
   bgSyncing = false;
 }
 
-async function fetchThreadContacts(threadId) {
+async function fetchThreadContacts(threadId, hasKwQuery) {
   try {
     var res = await gFetch(
       'https://gmail.googleapis.com/gmail/v1/users/me/threads/'
@@ -1110,7 +1141,13 @@ async function fetchThreadContacts(threadId) {
       keywords.forEach(function(kw) {
         var re = new RegExp(kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
         var matches = searchText.match(re);
-        if (matches) score += matches.length;
+        if (matches) {
+          score += matches.length;
+        } else if (hasKwQuery) {
+          // Gmail found this thread via keyword search — keyword is in the body
+          // even though it didn't appear in subject/snippet. Award 1 base point.
+          score += 1;
+        }
       });
 
       var d    = date ? new Date(date) : new Date();
@@ -1316,6 +1353,12 @@ function filterLocal() {
       var hay = [c.name, c.email, c.company||'', c.notes||'', c['last subject']||'',
                  (c.email.split('@')[1]||'').replace(/\..+/,'')].join(' ').toLowerCase();
       if (hay.indexOf(q) < 0) return false;
+      // Live search relevance score — count how many times the term appears
+      var cnt = 0, pos = hay.indexOf(q);
+      while (pos !== -1) { cnt++; pos = hay.indexOf(q, pos + 1); }
+      c._searchScore = cnt;
+    } else {
+      c._searchScore = 0;
     }
     return true;
   });
@@ -1331,15 +1374,17 @@ function sortBy(mode, btn) {
 }
 
 function doSort(skipUI) {
-  var effectiveMode = keywords.length === 0 ? 'recent' : sortMode;
-  // Keep button highlight in sync with effective mode
+  var q = (document.getElementById('mainSearch').value || '').trim();
+  // When searching, always sort by live search relevance score
+  var effectiveMode = q ? 'search' : (keywords.length === 0 ? 'recent' : sortMode);
   document.querySelectorAll('.sort-btn').forEach(function(b){ b.classList.remove('active'); });
   var activeBtn = document.getElementById('sb-' + effectiveMode);
   if (activeBtn) activeBtn.classList.add('active');
   filtered.sort(function(a, b) {
-    if (effectiveMode === 'score')  return parseInt(b['keyword score']||0) - parseInt(a['keyword score']||0);
-    if (effectiveMode === 'recent') return (b['last contact']||'') > (a['last contact']||'') ? 1 : -1;
-    if (effectiveMode === 'emails') return parseInt(b['email count']||0)   - parseInt(a['email count']||0);
+    if (effectiveMode === 'search')  return (b._searchScore||0) - (a._searchScore||0);
+    if (effectiveMode === 'score')   return parseInt(b['keyword score']||0) - parseInt(a['keyword score']||0);
+    if (effectiveMode === 'recent')  return (b['last contact']||'') > (a['last contact']||'') ? 1 : -1;
+    if (effectiveMode === 'emails')  return parseInt(b['email count']||0)   - parseInt(a['email count']||0);
     return 0;
   });
   renderContacts();
@@ -1423,8 +1468,11 @@ function renderContacts() {
       extraLine = '<div class="c-extra c-subj">✉ ' + esc(c['last subject'].substring(0,80)) + (c['last subject'].length>80?'…':'') + '</div>';
     }
 
-    var scoreHtml = hasKw
-      ? '<div class="c-score"><div class="sc-n">' + score + '</div><div class="sc-l">score</div></div>'
+    var q = (document.getElementById('mainSearch').value || '').trim();
+    var displayScore = q ? (c._searchScore || 0) : score;
+    var scoreLbl = q ? 'match' : 'score';
+    var scoreHtml = (hasKw || q)
+      ? '<div class="c-score"><div class="sc-n">' + displayScore + '</div><div class="sc-l">' + scoreLbl + '</div></div>'
       : '<div class="c-score"><div class="sc-n" style="font-size:11px;color:var(--sage)">—</div><div class="sc-l">score</div></div>';
 
     return '<div class="c-card' + (cat==='Exclude'?' excluded':'') + '" onclick="openContact('+i+')">'
@@ -1990,23 +2038,38 @@ function showToast(msg){
 }
 
 // ════════════════════════════════════════════════════════════════════
-// AI COMMAND BAR
+// AI CHAT
 // ════════════════════════════════════════════════════════════════════
+
+function renderChatHistory() {
+  var box = document.getElementById('aiChatMsgs');
+  if (!aiChatHistory.length) { box.innerHTML = ''; return; }
+  box.innerHTML = aiChatHistory.map(function(m) {
+    if (m.role === 'user') {
+      return '<div class="ai-msg-user">' + esc(m.content) + '</div>';
+    }
+    return '<div class="ai-msg-ai"><div class="ai-msg-badge">✦ AI</div>'
+      + m.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')
+      + '</div>';
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
 
 async function runAiCmd() {
   var cmd = document.getElementById('aiCmdInput').value.trim();
   if (!cmd) return;
+  document.getElementById('aiCmdInput').value = '';
 
-  var resultsBox = document.getElementById('aiResults');
-  var resultsTxt = document.getElementById('aiResultsTxt');
-  var draftBox   = document.getElementById('aiDraftBox');
-  var draftTxt   = document.getElementById('aiDraftTxt');
+  // Add user message to history
+  aiChatHistory.push({ role: 'user', content: cmd });
+  renderChatHistory();
 
-  resultsBox.style.display = 'block';
-  draftBox.style.display   = 'none';
-  resultsTxt.textContent   = '✦ Thinking…';
+  // Typing indicator
+  var box = document.getElementById('aiChatMsgs');
+  box.innerHTML += '<div class="ai-msg-ai" id="aiTyping"><div class="ai-msg-badge">✦ AI</div>Thinking…</div>';
+  box.scrollTop = box.scrollHeight;
 
-  // Build a compact contact summary for AI context (top 200 by email count)
+  // Build contact context
   var topContacts = allContacts
     .filter(function(c){ return parseInt(c['email count']||0) > 0; })
     .sort(function(a,b){ return parseInt(b['email count']||0) - parseInt(a['email count']||0); })
@@ -2014,92 +2077,132 @@ async function runAiCmd() {
     .map(function(c){
       return [c.name, '<'+c.email+'>', c.company||'', c.classification||'',
               'emails:'+c['email count'], 'last:'+c['last contact'],
-              c['last subject']?'"'+c['last subject'].substring(0,60)+'"':'',
+              c['last subject'] ? '"'+c['last subject'].substring(0,60)+'"' : '',
               c.notes||''].filter(Boolean).join(' | ');
     }).join('\n');
 
   var sig = localStorage.getItem('gcrm_sig') || '';
 
-  var prompt = 'You are an AI assistant for a business contact CRM called GCRM.\n\n'
-    + 'The user has ' + allContacts.length + ' contacts. Here are their top contacts:\n\n'
+  var systemPrompt = 'You are an AI assistant for a business CRM called GCRM. This is a conversation — remember context from earlier messages.\n\n'
+    + 'The user has ' + allContacts.length + ' contacts. Top contacts by email volume:\n\n'
     + topContacts + '\n\n'
-    + 'User command: "' + cmd + '"\n\n'
-    + 'Instructions:\n'
-    + '- If the user wants to FIND contacts: list the matching names and emails and explain why they match.\n'
-    + '- If the user wants to DRAFT an email: write a professional email draft. Use the signature below if provided.\n'
-    + '- If the user wants BOTH: find the contacts AND write a draft addressed to them.\n'
-    + '- Be specific and reference real details from the contact data above.\n'
-    + '- For email drafts, start with DRAFT: on its own line, then the email body.\n\n'
-    + 'Signature:\n' + (sig || '[No signature set]');
+    + 'INSTRUCTIONS:\n'
+    + '- FIND contacts: list matching contacts. Format each as: NAME <email> — reason\n'
+    + '- DRAFT email: write a professional draft starting with "DRAFT:" on its own line. Include Subject: line before the body.\n'
+    + '- BOTH: find contacts then write a draft for them.\n'
+    + '- Be specific — reference real data from the contact list above.\n'
+    + '- When listing multiple contacts who match, list ALL of them, not just one.\n'
+    + 'Signature to append to all drafts:\n' + (sig || '[No signature set]');
+
+  // Build messages array (full conversation history for context)
+  var messages = aiChatHistory.map(function(m) {
+    return { role: m.role, content: m.content };
+  });
 
   try {
     var data = await aiPost({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1500,
-      messages: [{ role: 'user', content: prompt }]
+      max_tokens: 2000,
+      system: systemPrompt,
+      messages: messages
     });
     var text = (data.content && data.content[0] && data.content[0].text) || 'No response';
 
-    // Check if response contains a draft
+    // Remove typing indicator and add real response
+    aiChatHistory.push({ role: 'assistant', content: text });
+    renderChatHistory();
+
+    // Parse contacts from response
+    parseAiContacts(text);
+
+    // If there's a draft, pre-fill the email body field
     if (text.includes('DRAFT:')) {
-      var parts    = text.split('DRAFT:');
-      var analysis = parts[0].trim();
-      var draft    = parts[1].trim();
-
-      // Try to extract subject from draft (looks for Subject: line)
-      var subjMatch = draft.match(/^Subject:\s*(.+)$/im);
-      var subj = subjMatch ? subjMatch[1].trim() : '';
-      if (subjMatch) draft = draft.replace(subjMatch[0], '').trim();
-
-      // Extract matched contact emails from analysis text
-      var emailMatches = analysis.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
-      var toField = document.getElementById('aiDraftTo');
-      var subjField = document.getElementById('aiDraftSubject');
-      if (emailMatches.length > 0) toField.value = emailMatches.join(', ');
-      if (subj) subjField.value = subj;
-
-      resultsTxt.textContent = analysis || 'Here is a draft email based on your contacts:';
-      draftTxt.value         = draft;
-      draftBox.style.display = 'block';
-    } else {
-      resultsTxt.textContent = text;
-      draftBox.style.display = 'none';
+      var draftParts = text.split('DRAFT:');
+      var draftBody  = draftParts[1] ? draftParts[1].trim() : '';
+      var subjMatch  = draftBody.match(/^Subject:\s*(.+)$/im);
+      if (subjMatch) {
+        document.getElementById('aiEmailSubject').value = subjMatch[1].trim();
+        draftBody = draftBody.replace(subjMatch[0], '').trim();
+      }
+      document.getElementById('aiEmailBody').value = draftBody;
+      if (aiMatchedContacts.length > 0) showToast('Draft ready — review contacts and click Send');
     }
+
   } catch(e) {
-    resultsTxt.textContent = '⚠ Error: ' + e.message;
+    aiChatHistory.push({ role: 'assistant', content: '⚠ ' + e.message });
+    renderChatHistory();
   }
 }
 
-function copyAiDraft() {
-  var txt = document.getElementById('aiDraftTxt').value;
-  navigator.clipboard.writeText(txt).then(function(){ showToast('✓ Draft copied to clipboard'); });
+function parseAiContacts(text) {
+  // Extract emails from the AI response and match against CRM contacts
+  var emailRe  = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+  var foundEmails = text.match(emailRe) || [];
+  var matched = [];
+  foundEmails.forEach(function(email) {
+    var c = allContacts.find(function(x) { return x.email.toLowerCase() === email.toLowerCase(); });
+    if (c && !matched.find(function(x){ return x.email === c.email; })) matched.push(c);
+  });
+
+  if (matched.length > 0) {
+    aiMatchedContacts = matched;
+    aiSelectedContacts = {};
+    matched.forEach(function(c) { aiSelectedContacts[c.email] = true; });
+    renderAiContactList();
+    document.getElementById('aiContactSelect').style.display = 'block';
+  }
 }
 
-async function sendAiDraft() {
-  var to      = document.getElementById('aiDraftTo').value.trim();
-  var subject = document.getElementById('aiDraftSubject').value.trim();
-  var body    = document.getElementById('aiDraftTxt').value.trim();
+function renderAiContactList() {
+  document.getElementById('aiContactList').innerHTML = aiMatchedContacts.map(function(c) {
+    var sel = aiSelectedContacts[c.email];
+    return '<div class="ai-contact-card' + (sel ? ' selected' : '') + '" onclick="toggleAiContact(\'' + c.email.replace(/'/g,"\\'") + '\')">'
+      + '<div class="ai-check">' + (sel ? '✓' : '') + '</div>'
+      + '<div class="c-avatar" style="background:' + avatarColor(c.email) + ';width:26px;height:26px;font-size:10px;border-radius:7px;flex-shrink:0">' + initials(c.name||c.email) + '</div>'
+      + '<div style="min-width:0"><div style="font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">' + esc(c.name||c.email) + '</div>'
+      + '<div style="font-size:10px;color:var(--sage)">' + esc(c.company||c.email.split('@')[1]||'') + '</div></div>'
+      + '</div>';
+  }).join('');
+}
 
-  if (!to)      { showToast('⚠ Add a recipient email address first'); return; }
-  if (!subject) { showToast('⚠ Add a subject line first'); return; }
-  if (!body)    { showToast('⚠ Email body is empty'); return; }
+function toggleAiContact(email) {
+  aiSelectedContacts[email] = !aiSelectedContacts[email];
+  renderAiContactList();
+}
 
-  var recipients = to.split(',').map(function(e){ return e.trim(); }).filter(Boolean);
+function selectAllAiContacts() {
+  aiMatchedContacts.forEach(function(c) { aiSelectedContacts[c.email] = true; });
+  renderAiContactList();
+}
 
-  if (!confirm('Send this email to ' + recipients.length + ' recipient(s)?\n\n' + recipients.join('\n'))) return;
-
-  showToast('⏳ Sending…');
+async function emailSelectedContacts() {
+  var selected = aiMatchedContacts.filter(function(c) { return aiSelectedContacts[c.email]; });
+  if (!selected.length) { showToast('No contacts selected'); return; }
+  var subject = document.getElementById('aiEmailSubject').value.trim();
+  var body    = document.getElementById('aiEmailBody').value.trim();
+  if (!subject) { showToast('Add a subject line first'); return; }
+  if (!body)    { showToast('Add an email body, or ask AI to draft one'); return; }
+  if (!confirm('Send "' + subject + '" to ' + selected.length + ' contact(s)?\n\n' + selected.map(function(c){ return (c.name||c.email); }).join('\n'))) return;
+  showToast('⏳ Sending to ' + selected.length + ' contacts…');
   var sent = 0, failed = 0;
-  for (var recipient of recipients) {
-    var ok = await sendGmailMessage(recipient, subject, body);
+  for (var c of selected) {
+    var ok = await sendGmailMessage(c.email, subject, body);
     if (ok) sent++; else failed++;
   }
+  showToast(failed === 0 ? '✓ Sent to ' + sent + ' contact' + (sent > 1 ? 's' : '') : '⚠ Sent ' + sent + ', failed ' + failed);
   if (failed === 0) {
-    showToast('✓ Sent to ' + sent + ' recipient' + (sent > 1 ? 's' : ''));
-    document.getElementById('aiResults').style.display = 'none';
-  } else {
-    showToast('⚠ Sent ' + sent + ', failed ' + failed + ' — check Gmail access');
+    document.getElementById('aiContactSelect').style.display = 'none';
+    document.getElementById('aiEmailSubject').value = '';
+    document.getElementById('aiEmailBody').value = '';
   }
+}
+
+function clearAiChat() {
+  aiChatHistory = []; aiMatchedContacts = []; aiSelectedContacts = {};
+  document.getElementById('aiChatMsgs').innerHTML = '';
+  document.getElementById('aiContactSelect').style.display = 'none';
+  document.getElementById('aiEmailSubject').value = '';
+  document.getElementById('aiEmailBody').value = '';
 }
 
 // Send a single email via Gmail API
