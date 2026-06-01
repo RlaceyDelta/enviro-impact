@@ -28,9 +28,10 @@
   const db       = getFirestore(app);
   const provider = new GoogleAuthProvider();
   provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+  provider.addScope('https://www.googleapis.com/auth/contacts');
 
   // Expose to global scope
-  window._firebase = { auth, db, provider, signInWithPopup, signOut, onAuthStateChanged,
+  window._firebase = { auth, db, provider, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
     doc, setDoc, getDoc, collection, getDocs, writeBatch, deleteDoc };
 </script>
 <style>
@@ -722,26 +723,20 @@ function signIn() {
   var fb = window._firebase;
   if (!fb) { setTimeout(signIn, 300); return; }
 
-  if (!_tokenClient) {
-    _tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: GMAIL_SCOPE + ' ' + CONTACTS_SCOPE,
-      callback: function(resp) {
-        _tokenPending = null;
-        if (resp.error || !resp.access_token) {
-          showToast('⚠ Gmail access needed — please try again');
-          return;
-        }
-        _gmailToken  = resp.access_token;
-        _tokenExpiry = Date.now() + ((resp.expires_in || 3500) * 1000);
+  // Single popup — Firebase handles both app auth and Gmail token in one shot
+  fb.signInWithPopup(fb.auth, fb.provider)
+    .then(function(result) {
+      var credential = fb.GoogleAuthProvider.credentialFromResult(result);
+      if (credential && credential.accessToken) {
+        _gmailToken  = credential.accessToken;
+        _tokenExpiry = Date.now() + 3500000; // ~58 min
         sessionStorage.setItem('gcrm_token', _gmailToken);
         sessionStorage.setItem('gcrm_token_exp', String(_tokenExpiry));
-        fb.signInWithPopup(fb.auth, fb.provider)
-          .catch(function(err) { showToast('⚠ Sign in failed: ' + err.message); });
       }
+    })
+    .catch(function(err) {
+      showToast('⚠ Sign in failed: ' + err.message);
     });
-  }
-  _tokenClient.requestAccessToken({ prompt: 'select_account' });
 }
 
 function initAuth() {
