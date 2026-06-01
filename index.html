@@ -565,12 +565,6 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
         </div>
       </div>
       <div class="settings-section">
-        <div class="settings-title">AI Settings</div>
-        <div class="sec-lbl" style="margin-bottom:6px">Cloudflare Worker URL</div>
-        <input type="text" class="mini-inp" id="cfWorkerUrl" placeholder="https://your-worker.your-subdomain.workers.dev" style="margin-bottom:6px;font-size:12px;">
-        <div class="sig-hint">Routes all AI requests through your Worker — API key stays server-side, never in the browser or on GitHub.</div>
-      </div>
-      <div class="settings-section">
         <div class="settings-title">Sync Settings</div>
         <div class="toggle-row">
           <div><div class="toggle-label">Sync to Google Contacts</div><div class="toggle-sub">Classified contacts (except Exclude) become real Google Contacts</div></div>
@@ -649,14 +643,15 @@ body{font-family:'Outfit',sans-serif;background:var(--cream);color:var(--ink);mi
 var GOOGLE_CLIENT_ID = '457195153039-a9pr5abe3a3stgsqd4eo4cbn52dlo2ms.apps.googleusercontent.com';
 var GMAIL_SCOPE      = 'https://www.googleapis.com/auth/gmail.readonly';
 var CONTACTS_SCOPE   = 'https://www.googleapis.com/auth/contacts';
+var CF_WORKER_URL    = 'https://restless-rice-8655.rlacey.workers.dev';
 
 // ── AI PROXY HELPER ─────────────────────────────────────────────────
 // All Anthropic calls go through the Cloudflare Worker — key never touches the browser.
 // Set your Worker URL once in ⚙ Settings and it's saved to localStorage.
 async function aiPost(payload) {
-  var workerUrl = localStorage.getItem('gcrm_cf_worker') || '';
+  var workerUrl = CF_WORKER_URL;
   if (!workerUrl) {
-    throw new Error('Cloudflare Worker URL not set — open ⚙ Settings and paste your Worker URL');
+    throw new Error('AI proxy not configured — contact support');
   }
   var res = await fetch(workerUrl, {
     method: 'POST',
@@ -1847,13 +1842,10 @@ function loadSettings() {
   var sig=localStorage.getItem('gcrm_sig')||'';
   document.getElementById('sigArea').value=sig;
   signature=sig;
-  document.getElementById('cfWorkerUrl').value=localStorage.getItem('gcrm_cf_worker')||'';
 }
 function saveSettings() {
   signature=document.getElementById('sigArea').value.trim();
   localStorage.setItem('gcrm_sig',signature);
-  var workerUrl=document.getElementById('cfWorkerUrl').value.trim();
-  localStorage.setItem('gcrm_cf_worker',workerUrl);
   closeModal('settingsModal');
   showToast('✓ Settings saved');
 }
