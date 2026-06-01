@@ -1113,7 +1113,7 @@ async function fetchThreadContacts(threadId, hasKwQuery) {
       'https://gmail.googleapis.com/gmail/v1/users/me/threads/'
       + threadId
       + '?format=metadata'
-      + '&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date'
+      + '&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Subject&metadataHeaders=Date'
     );
     if (!res.ok) return [];
     var data    = await res.json();
@@ -1128,51 +1128,69 @@ async function fetchThreadContacts(threadId, hasKwQuery) {
 
       var emMatch = from.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
       if (!emMatch) return;
-      var email = emMatch[0].toLowerCase();
+      var fromEmail = emMatch[0].toLowerCase();
 
-      if (currentUser && email === currentUser.email.toLowerCase()) return;
-      if (isSpamEmail(email)) return;
+      // Build list of emails to score for this message:
+      // — incoming (FROM = someone else): score the sender
+      // — outgoing (FROM = you): score everyone in TO + CC
+      var toProcess = [];
+      if (currentUser && fromEmail === currentUser.email.toLowerCase()) {
+        var toStr  = getHdr(msg, 'To')  || '';
+        var ccStr  = getHdr(msg, 'Cc')  || '';
+        var allRec = toStr + ',' + ccStr;
+        var recEmails = allRec.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+        recEmails.forEach(function(e) {
+          toProcess.push({ email: e.toLowerCase(), raw: allRec });
+        });
+      } else {
+        toProcess.push({ email: fromEmail, raw: from });
+      }
 
-      var nameMatch = from.match(/^"?([^"<]+)"?\s*</);
-      var name = nameMatch ? nameMatch[1].trim() : email.split('@')[0];
+      toProcess.forEach(function(item) {
+        var email = item.email;
+        if (currentUser && email === currentUser.email.toLowerCase()) return;
+        if (isSpamEmail(email)) return;
 
-      var searchText = (subject + ' ' + snippet).toLowerCase();
-      var score = 0;
-      keywords.forEach(function(kw) {
-        var re = new RegExp(kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
-        var matches = searchText.match(re);
-        if (matches) {
-          score += matches.length;
-        } else if (hasKwQuery) {
-          // Gmail found this thread via keyword search — keyword is in the body
-          // even though it didn't appear in subject/snippet. Award 1 base point.
-          score += 1;
+        var nameMatch = item.raw.match(new RegExp('"?([^"<,]+)"?\\s*<\\s*' + email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*>', 'i'));
+        var name = nameMatch ? nameMatch[1].trim() : email.split('@')[0];
+
+        var searchText = (subject + ' ' + snippet).toLowerCase();
+        var score = 0;
+        keywords.forEach(function(kw) {
+          var re = new RegExp(kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
+          var matches = searchText.match(re);
+          if (matches) {
+            score += matches.length;
+          } else if (hasKwQuery) {
+            score += 1; // keyword matched in body (Gmail confirmed it)
+          }
+        });
+
+        var d    = date ? new Date(date) : new Date();
+        var dStr = d.toISOString().slice(0, 10);
+
+        if (!found[email]) {
+          found[email] = {
+            name:             name,
+            email:            email,
+            company:          extractCo(email),
+            'keyword score':  score,
+            'email count':    1,
+            'first contact':  dStr,
+            'last contact':   dStr,
+            'last subject':   subject,
+            classification:   userCats[email]  || '',
+            notes:            userNotes[email] || '',
+            liUrl:            '',
+            liTitle:          '',
+          };
+        } else {
+          found[email]['keyword score'] += score;
+          found[email]['email count']   += 1;
+          if (dStr < found[email]['first contact']) found[email]['first contact'] = dStr;
+          if (dStr > found[email]['last contact'])  { found[email]['last contact'] = dStr; found[email]['last subject'] = subject; }
         }
       });
-
-      var d    = date ? new Date(date) : new Date();
-      var dStr = d.toISOString().slice(0, 10);
-
-      if (!found[email]) {
-        found[email] = {
-          name:             name,
-          email:            email,
-          company:          extractCo(email),
-          'keyword score':  score,
-          'email count':    1,
-          'first contact':  dStr,
-          'last contact':   dStr,
-          'last subject':   subject,
-          classification:   userCats[email]  || '',
-          notes:            userNotes[email] || '',
-          liUrl:            '',
-          liTitle:          '',
-        };
-      } else {
-        found[email]['keyword score'] += score;
-        if (dStr < found[email]['first contact']) found[email]['first contact'] = dStr;
-        if (dStr > found[email]['last contact'])  { found[email]['last contact'] = dStr; found[email]['last subject'] = subject; }
-      }
     });
 
     return Object.values(found);
@@ -1192,58 +1210,96 @@ function onSearch() {
   var q = document.getElementById('mainSearch').value.trim();
   if (q.length < 2) { hideGmailFound(); return; }
   clearTimeout(gmailSearchTimer);
-  gmailSearchTimer = setTimeout(function() { doGmailSearch(q); }, 900);
+  gmailSearchTimer = setTimeout(function() { doGmailSearch(q); }, 500);
 }
 
 async function doGmailSearch(q) {
   if (isDemo) return;
+  // Bail if user already changed the search box
+  if ((document.getElementById('mainSearch').value || '').trim() !== q) return;
   try {
     var url  = 'https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=50&q=' + encodeURIComponent(q);
     var res  = await gFetch(url);
     if (!res.ok) return;
     var data = await res.json();
     var threads = data.threads || [];
-    if (threads.length === 0) { hideGmailFound(); return; }
+    if (!threads.length) { hideGmailFound(); return; }
 
     var existingEmails = {};
     allContacts.forEach(function(c) { existingEmails[c.email] = true; });
 
-    var found = {};
+    var gmailHits  = {};  // email → hit count (for existing contacts)
+    var newFound   = {};  // email → contact stub (for contacts not in CRM)
+
     for (var t of threads.slice(0, 25)) {
       var tr = await gFetch(
         'https://gmail.googleapis.com/gmail/v1/users/me/threads/' + t.id
-        + '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date'
+        + '?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date'
       );
       if (!tr.ok) continue;
-      var td = await tr.json();
+      var td   = await tr.json();
+      var subj = getHdr(td.messages && td.messages[0], 'Subject') || '';
+      var date = getHdr(td.messages && td.messages[0], 'Date')    || '';
+
       (td.messages || []).forEach(function(msg) {
-        var from  = getHdr(msg, 'From') || '';
-        var em    = from.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
-        if (!em) return;
-        var email = em[0].toLowerCase();
-        if (currentUser && email === currentUser.email.toLowerCase()) return;
-        if (isSpamEmail(email)) return;
-        if (existingEmails[email]) return;
-        var nameM = from.match(/^"?([^"<]+)"?\s*</);
-        var subj  = getHdr(msg, 'Subject') || '';
-        var date  = getHdr(msg, 'Date') || '';
-        found[email] = {
-          name:           nameM ? nameM[1].trim() : email.split('@')[0],
-          email:          email,
-          company:        extractCo(email),
-          'keyword score':0,
-          'email count':  1,
-          'last contact': date ? new Date(date).toISOString().slice(0,10) : '',
-          'last subject': subj,
-          classification: '',
-          notes:          '',
-        };
+        var from = getHdr(msg, 'From') || '';
+        var to   = getHdr(msg, 'To')   || '';
+        var all  = from + ',' + to;
+        var ems  = all.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+        ems.forEach(function(em) {
+          em = em.toLowerCase();
+          if (currentUser && em === currentUser.email.toLowerCase()) return;
+          if (isSpamEmail(em)) return;
+          if (existingEmails[em]) {
+            // Existing CRM contact — count as a Gmail hit
+            gmailHits[em] = (gmailHits[em] || 0) + 1;
+          } else {
+            // New contact not in CRM
+            if (!newFound[em]) {
+              var nameM = from.match(/^"?([^"<]+)"?\s*</);
+              newFound[em] = {
+                name: nameM ? nameM[1].trim() : em.split('@')[0],
+                email: em, company: extractCo(em),
+                'keyword score': 0, 'email count': 1,
+                'last contact': date ? new Date(date).toISOString().slice(0,10) : '',
+                'last subject': subj, classification: '', notes: '',
+              };
+            }
+          }
+        });
       });
     }
 
-    var arr = Object.values(found);
-    if (arr.length > 0) showGmailFound(arr, q);
+    // ── Boost existing contacts that appeared in Gmail results ──────
+    var filteredSet = {};
+    filtered.forEach(function(c) { filteredSet[c.email] = true; });
+    var changed = false;
+
+    allContacts.forEach(function(c) {
+      if (!gmailHits[c.email]) return;
+      var boost = gmailHits[c.email] * 4;
+      c._searchScore = (c._searchScore || 0) + boost;
+      if (!filteredSet[c.email]) {
+        // Contact wasn't in filtered results (Argentina only in email body)
+        // Add them now with their Gmail-derived score
+        filtered.push(c);
+        filteredSet[c.email] = true;
+      }
+      changed = true;
+    });
+
+    if (changed) {
+      // Re-sort filtered list by search score
+      filtered.sort(function(a,b) { return (b._searchScore||0) - (a._searchScore||0); });
+      document.getElementById('resCount').textContent = filtered.length + ' contacts';
+      renderContacts();
+    }
+
+    // ── Show contacts not in CRM at all ────────────────────────────
+    var newArr = Object.values(newFound);
+    if (newArr.length > 0) showGmailFound(newArr, q);
     else hideGmailFound();
+
   } catch(e) {
     hideGmailFound();
   }
